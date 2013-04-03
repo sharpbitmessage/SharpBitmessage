@@ -55,8 +55,10 @@ namespace bitmessage
 			catch (Exception e)
 			{
 				Debug.WriteLine("Порт занят? "+e);
+				Debug.WriteLine("Пытаюсь стартовать прослушивание на другом порту");
 				_listener = new TcpListener(IPAddress.Any, 0);
 				_listener.Start();
+				Debug.WriteLine("Сервер стартовал нормально");
 			}
 
 			_listenerLoopThread = new Thread(new ThreadStart(ListenerLoop)) { IsBackground = true, Name = "ListenerLoop Server" };

@@ -17,23 +17,6 @@ namespace bitmessage.network
 			return BitConverter.ToUInt64(buffer, 0);
 		}
 
-		public static byte[] ReverseIfNeed(this byte[] inArray)
-		{
-			if (BitConverter.IsLittleEndian)
-				return inArray;
-
-			int highCtr = inArray.Length - 1;
-
-			for (int ctr = 0; ctr < inArray.Length / 2; ctr++)
-			{
-				byte temp = inArray[ctr];
-				inArray[ctr] = inArray[highCtr];
-				inArray[highCtr] = temp;
-				highCtr -= 1;
-			}
-			return inArray;
-		}
-
 		#region Unix DateTime
 
 		static readonly DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0);
@@ -52,17 +35,19 @@ namespace bitmessage.network
 
 		#region VarInt VarStr VarIntList
 
-		static UInt64 ReadVarInt(this BinaryReader br)
+		static UInt64 ReadVarInt(this byte[] br, ref int pos)
 		{
-			byte firstByte = br.ReadByte();
-			if (firstByte < 253) 
+			byte firstByte = br[pos];
+			pos++;
+
+			if (firstByte < 253)
 				return firstByte;
 			if (firstByte == 253)
-				return br.ReadUInt16();
+				return br.ReadUInt16(ref pos);
 			if (firstByte == 254)
-				return br.ReadUInt32();
+				return br.ReadUInt32(ref pos);
 			if (firstByte == 255)
-				return br.ReadUInt64();
+				return br.ReadUInt64(ref pos);
 			throw new Exception("WTF");
 		}
 		static void WriteVarInt(this BinaryWriter bw, UInt64 i)
@@ -86,13 +71,14 @@ namespace bitmessage.network
 			}
 		}
 
-		static string ReadVarStr(this BinaryReader br)
+		static string ReadVarStr(this byte[] br, ref int pos)
 		{
-			int l = (int)br.ReadVarInt();
-			byte[] bytes = br.ReadBytes(l);
+			int l = (int)br.ReadVarInt(ref pos);
+			byte[] bytes = br.ReadBytes(ref pos, l);
 			Char[] chars = Encoding.ASCII.GetChars(bytes);
 			return new String(chars);
 		}
+
 		static void WriteVarStr(this BinaryWriter bw,string s)
 		{
 			byte[] bytes = Encoding.ASCII.GetBytes(s);
@@ -100,14 +86,15 @@ namespace bitmessage.network
 			bw.Write(bytes);
 		}
 
-		static List<UInt64> ReadVarIntList(this BinaryReader br)
+		static List<UInt64> ReadVarIntList(this byte[] br, ref int pos)
 		{
-			UInt64 l = br.ReadVarInt();
+			UInt64 l = br.ReadVarInt(ref pos);
 			List<UInt64> result = new List<UInt64>((int) l);
 			for (int i = 0; i < (int) l; ++i)
-				result.Add(br.ReadVarInt());
+				result.Add(br.ReadVarInt(ref pos));
 			return result;
 		}
+
 		static void WriteVarIntList(this BinaryWriter bw,List<UInt64> list)
 		{
 			bw.WriteVarInt((UInt64) list.Count);
@@ -142,27 +129,28 @@ namespace bitmessage.network
 		static void WriteHeaderMagic(this BinaryWriter bw)
 		{
 			Debug.WriteLine("WriteHeaderMagic");
-			bw.Write(0xE9BEB4D9);
+			bw.Write(BitConverter.GetBytes((UInt32) 0xE9BEB4D9).ReverseIfNeed());
 		}
 
 		static string ReadHeaderCommand(this BinaryReader br)
 		{
 			Debug.Write("ReadHeaderCommand - ");
-			StringBuilder result = new StringBuilder(12);
-			for (int i = 0; i < 12;++i )
-			{
-				Byte b = 0;
-				try
-				{
-					b = br.ReadByte();
-				}
-				catch (Exception e)
-				{
-					Debug.WriteLine("Похоже, что соединение потерено, извещаю об этом поток ClientsControlLoop " + e);
-					MaybeDisconnect.Set();
-					throw;
-				}
 
+			byte[] bytes;
+			try
+			{
+				bytes = br.ReadBytes(12);
+			}
+			catch (Exception e)
+			{
+				Debug.WriteLine("Похоже, что соединение потерено, извещаю об этом поток ClientsControlLoop " + e);
+				MaybeDisconnect.Set();
+				throw;
+			}
+
+			StringBuilder result = new StringBuilder(12);
+			foreach (byte b in bytes)
+			{
 				if (b==0) break;
 				result.Append(Encoding.ASCII.GetChars(new byte[] {b}));
 			}
@@ -184,49 +172,64 @@ namespace bitmessage.network
 			return new Header
 				       {
 					       Command = br.ReadHeaderCommand(),
-					       Length = br.ReadUInt32(),
+					       Length = BitConverter.ToUInt32(br.ReadBytes(4).ReverseIfNeed(), 0),
 					       Checksum = br.ReadBytes(4)
 				       };
 		}
+
 		public static void WriteHeader(this BinaryWriter bw, String command, byte[] payload)
 		{
+			Debug.WriteLine("WriteHeader " + command + " payload.Length=" + payload.Length);
+
+			//MemoryStream buf = new MemoryStream();
+			//BinaryWriter bw = new BinaryWriter(buf);
+
 			bw.WriteHeaderMagic();
 			bw.WriteHeaderCommand(command);
-			bw.Write((UInt32)payload.Length);
+			bw.Write(BitConverter.GetBytes((UInt32) payload.Length).ReverseIfNeed());
 
 			byte[] sha512 = new SHA512Managed().ComputeHash(payload);
+
 			for(int i=0;i<4;++i)
 				bw.Write(sha512[i]);
 
 			bw.Write(payload);
+
+			//byte[] payloadbytes = buf.ToArray();
+			//Debug.WriteLine("msg = " + payloadbytes.ToHex());
 		}
 
 		#endregion Header
 
 		#region Version
 
-		public static Version ReadVersion(this BinaryReader br)
+		public static Version ReadVersion(this byte[] br)
 		{
-						   throw new  NotImplementedException("Надо контролировать порядок байтов!");
+			if (br.Length < 83)
+			{
+				Debug.WriteLine("Version.Length<83");
+				return null;
+			}
+			int pos = 0;
 			return new Version
 				       {
-					       Value = br.ReadInt32(),
-					       Services = br.ReadUInt64(),
-					       Timestamp = br.ReadUInt64(),
+					       Value = br.ReadInt32(ref pos),
+					       Services = br.ReadUInt64(ref pos),
+					       Timestamp = br.ReadUInt64(ref pos),
 
-					       AddrRecvService = br.ReadUInt64(),
-					       AddrRecvIpPrefix = br.ReadBytes(12),
-					       AddrRecvIp = br.ReadUInt32(),
-					       AddrRecvPort = br.ReadUInt16(),
+					       AddrRecvService = br.ReadUInt64(ref pos),
+					       AddrRecvIpPrefix = br.ReadBytes(ref pos, 12),
+					       AddrRecvIp = br.ReadUInt32(ref pos),
+					       AddrRecvPort = br.ReadUInt16(ref pos),
 
-					       AddrFromService = br.ReadUInt64(),
-					       AddrFromIpPrefix = br.ReadBytes(12),
-					       AddrFromIp = br.ReadUInt32(),
-					       AddrFromPort = br.ReadUInt16(),
+					       AddrFromService = br.ReadUInt64(ref pos),
+					       AddrFromIpPrefix = br.ReadBytes(ref pos, 12),
+					       AddrFromIp = br.ReadUInt32(ref pos),
+					       AddrFromPort = br.ReadUInt16(ref pos),
 
-					       Nonce = br.ReadUInt64(),
-					       UserAgent = br.ReadVarStr(),
-					       StreamNumbers = br.ReadVarIntList()
+					       Nonce = br.ReadUInt64(ref pos),
+					       UserAgent = br.ReadVarStr(ref pos),
+					       StreamNumbers = br.ReadVarIntList(ref pos)
 				       };
 		}
 
@@ -234,7 +237,7 @@ namespace bitmessage.network
 		{
 			Debug.WriteLine("Подготавляиваю payload для отправки Version");
 
-			MemoryStream payload = new MemoryStream(120);
+			MemoryStream payload = new MemoryStream(500);
 			BinaryWriter localBw = new BinaryWriter(payload);
 
 			localBw.Write(BitConverter.GetBytes(v.Value).ReverseIfNeed());
@@ -256,8 +259,11 @@ namespace bitmessage.network
 			localBw.WriteVarStr(v.UserAgent);
 			localBw.WriteVarIntList(v.StreamNumbers);
 
-			Debug.WriteLine("localBw.WriteHeader(\"version\", payload.ToArray());");
-			bw.WriteHeader("version", payload.ToArray());
+			byte[] payloadbytes = payload.ToArray();
+
+			Debug.WriteLine("version = " + payloadbytes.ToHex());
+
+			bw.WriteHeader("version", payloadbytes);
 			bw.Flush();
 		}
 

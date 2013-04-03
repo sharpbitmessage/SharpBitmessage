@@ -46,6 +46,7 @@
     <Compile Include="Message.cs" />
     <Compile Include="network\Header.cs" />
     <Compile Include="network\Helper.cs" />
+    <Compile Include="network\Helper4BytesArray.cs" />
     <Compile Include="network\NetworkAddress.cs" />
     <Compile Include="network\Version.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

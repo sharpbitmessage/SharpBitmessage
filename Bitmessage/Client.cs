@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Threading;
 using SQLite;
 using bitmessage.network;
@@ -100,15 +101,30 @@ namespace bitmessage
 			while (ns.CanRead)
 			{
 				Header h = BinaryReader.ReadHeader();
-				Debug.WriteLine("ListenerLoop Command=" + h.Command);
-				if (h.Command == "version")
+				byte[] payload = BinaryReader.ReadBytes((int) h.Length);
+
+				byte[] sha512 = new SHA512Managed().ComputeHash(payload);
+
+				bool checksum = true;
+
+				for (int i = 0; i < 4; ++i)
+					checksum = checksum && (sha512[i] == h.Checksum[i]);
+
+				if (checksum)
 				{
-					network.Version v = BinaryReader.ReadVersion();
-					if (v.Value != 1)
-						Stop("Version = " + v.Value);
-					else if (v.Nonce == network.Version.EightBytesOfRandomDataUsedToDetectConnectionsToSelf)
-						Stop("DetectConnectionsToSelf");
+					Debug.WriteLine("ListenerLoop Command=" + h.Command);
+					if (h.Command == "version")
+					{
+						network.Version v = payload.ReadVersion();
+						if (v.Value != 1)
+							Stop("Version = " + v.Value);
+						else if (v.Nonce == network.Version.EightBytesOfRandomDataUsedToDetectConnectionsToSelf)
+							Stop("DetectConnectionsToSelf");
+						Debug.WriteLine("Подключились с " + v.UserAgent);
+					}
 				}
+				else
+					Debug.WriteLine("checksum error");
 			}
 		}
 
