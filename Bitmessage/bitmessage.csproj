@@ -49,6 +49,7 @@
     <Compile Include="network\Helper4BytesArray.cs" />
     <Compile Include="network\NetworkAddress.cs" />
     <Compile Include="network\Version.cs" />
+    <Compile Include="network\Node.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SQLite.cs" />
   </ItemGroup>

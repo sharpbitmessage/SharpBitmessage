@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace bitmessage.network
 {
@@ -27,7 +26,8 @@ namespace bitmessage.network
 
 		public static string ToHex(this byte[] ba)
 		{
-			StringBuilder sb = new StringBuilder(ba.Length * 2);
+			StringBuilder sb = new StringBuilder(2 + ba.Length*2);
+			sb.Append("0x");
 			foreach (byte b in ba)
 				sb.AppendFormat("{0:x2}", b);
 			return sb.ToString();
@@ -72,5 +72,23 @@ namespace bitmessage.network
 			pos += count;
 			return tmp;
 		}		
+	}
+
+	public class ByteArrayComparer : IEqualityComparer<byte[]>
+	{
+		public bool Equals(byte[] left, byte[] right)
+		{
+			if (left == null || right == null)
+			{
+				return left == right;
+			}
+			return left.SequenceEqual(right);
+		}
+		public int GetHashCode(byte[] key)
+		{
+			if (key == null)
+				throw new ArgumentNullException("key");
+			return key.Sum(b => b);
+		}
 	}
 }

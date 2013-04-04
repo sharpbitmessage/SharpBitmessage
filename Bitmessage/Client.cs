@@ -1,47 +1,23 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading;
-using SQLite;
 using bitmessage.network;
 
 namespace bitmessage
 {
-	public class Node
-	{
-		public Node() { }
-
-		public Node(string host, int port)
-		{
-			TimeLastSeen = DateTime.MinValue;
-			Stream = 1;
-			Services = 0; // ???
-			Host = host;
-			Port = port;
-			NumberOfBadConnection = 0;
-		}
-
-		[PrimaryKey]
-		public string HostStreamPort
-		{
-			get { return Host + " " + Stream + " " + Port; }
-			set { }
-		}
-
-		public DateTime TimeLastSeen { get ; set; }
-		public int Stream { get; set; }
-		public int Services { get; set; }  // ???
-		public string Host { get; set; }
-		public int Port { get; set; }
-		public int NumberOfBadConnection { get; set; } 
-	}
-
 	public class Client
 	{
-		private readonly TcpClient TcpClient;
+		private void debug(string msg)
+		{
+			Debug.WriteLine(Thread.CurrentThread.Name + " " + msg);
+		}
+
+		private readonly TcpClient _tcpClient;
 		public readonly Node Node;
 		
 		private Thread _listenerLoopThread;
@@ -51,17 +27,17 @@ namespace bitmessage
 
 		internal BinaryReader BinaryReader
 		{
-			get { return _binaryReader ?? (_binaryReader = new BinaryReader(TcpClient.GetStream())); }
+			get { return _binaryReader ?? (_binaryReader = new BinaryReader(_tcpClient.GetStream())); }
 		}
 
 		internal BinaryWriter BinaryWriter
 		{
-			get { return _binaryWriter ?? (_binaryWriter = new BinaryWriter(TcpClient.GetStream())); }
+			get { return _binaryWriter ?? (_binaryWriter = new BinaryWriter(_tcpClient.GetStream())); }
 		}
 
 		public Client(TcpClient tcpClient)
 		{
-			TcpClient = tcpClient;
+			_tcpClient = tcpClient;
 			IPEndPoint ipep = (IPEndPoint)tcpClient.Client.RemoteEndPoint;
 			Node = new Node
 				        {
@@ -77,27 +53,29 @@ namespace bitmessage
 		public Client(Node node)
 		{
 			Node = node;
-			TcpClient = new TcpClient(AddressFamily.InterNetwork);
+			_tcpClient = new TcpClient(AddressFamily.InterNetwork);
 		}
 
 		internal void Listen()
 		{
-			Debug.WriteLine("Стартую ListenerLoop");
-			_listenerLoopThread = new Thread(new ThreadStart(ListenerLoop)) { IsBackground = true, Name = "ListenerLoop "+ Node.HostStreamPort };
+			debug("Стартую ListenerLoop");
+			_listenerLoopThread = new Thread(ListenerLoop) { IsBackground = true, Name = "ListenerLoop "+ Node.HostStreamPort };
 			_listenerLoopThread.Start();			
 		}
 
 		internal void Stop(string msg = null)
 		{
 			if (!string.IsNullOrEmpty(msg))
-				Debug.WriteLine(msg);
-			Debug.WriteLine("Stop");
-			TcpClient.Close();
+				debug(msg);
+			debug("Stop");
+			_tcpClient.Close();
 		}
+
+		private readonly Dictionary<byte[], byte[]> _inventory = new Dictionary<byte[], byte[]>(new ByteArrayComparer());
 
 		private void ListenerLoop()
 		{
-			NetworkStream ns = TcpClient.GetStream();
+			NetworkStream ns = _tcpClient.GetStream();
 			while (ns.CanRead)
 			{
 				Header h = BinaryReader.ReadHeader();
@@ -112,27 +90,54 @@ namespace bitmessage
 
 				if (checksum)
 				{
-					Debug.WriteLine("ListenerLoop Command=" + h.Command);
+					debug("Command=" + h.Command);
+					
+					// *************  VERSION   *******************
+
 					if (h.Command == "version")
 					{
-						network.Version v = payload.ReadVersion();
+						network.Version v = payload.ToVersion();
 						if (v.Value != 1)
 							Stop("Version = " + v.Value);
 						else if (v.Nonce == network.Version.EightBytesOfRandomDataUsedToDetectConnectionsToSelf)
 							Stop("DetectConnectionsToSelf");
-						Debug.WriteLine("Подключились с " + v.UserAgent);
+						debug("Подключились с " + v.UserAgent);
+
+						BinaryWriter.SendVerack();
 					}
+
+					// *************  INV   *******************
+
+					else if (h.Command == "inv")
+					{
+						debug("Load inv");
+						List<byte[]> buff = new List<byte[]>(payload.Length/32);
+						foreach (byte[] item in payload.ToInv())
+						{
+							debug(item.ToHex());
+							if (!_inventory.ContainsKey(item)) // TODO Получать _inventory от bitmessage , многопоточность !!!
+							{
+								buff.Add(item);
+							}
+						}
+						if (buff.Count > 0)
+						{
+							debug("SendVerack count=" + buff.Count);
+							BinaryWriter.SendGetdata(buff);
+						}
+					}
+				
 				}
 				else
-					Debug.WriteLine("checksum error");
+					debug("checksum error");
 			}
 		}
 
-		public bool Connected { get { return TcpClient.Connected; } }
+		public bool Connected { get { return _tcpClient.Connected; } }
 
 		public void Connect()
 		{
-			TcpClient.Connect(Node.Host, Node.Port);
+			_tcpClient.Connect(Node.Host, Node.Port);
 			BinaryWriter.WriteVersion(new network.Version());
 			Listen();
 		}
