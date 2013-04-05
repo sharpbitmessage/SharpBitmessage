@@ -14,15 +14,19 @@ namespace bitmessage
     public class Bitmessage:IDisposable
     {
 		private TcpListener _listener;
-		private readonly List<Client> _clients = new List<Client>(8); // Раз в пять минут отправлять ping, и очищать список от отключившихся
+		private readonly List<Client> _clients = new List<Client>(8);
+	    internal Inventory Inventory;
 
 		private readonly Thread _listenerLoopThread;
 		private readonly Thread _clientsControlThread;
 
-	    private SQLiteConnection db;
-
 		private string _baseName;
 		private int _port;
+
+		public SQLiteAsyncConnection GetConnection()
+		{
+			return new SQLiteAsyncConnection(_baseName);
+		}
 
 		public Bitmessage(string baseName = "bitmessage.sqlite", int port = 8444)
 		{
@@ -31,21 +35,22 @@ namespace bitmessage
 
 			if (!File.Exists(baseName))
 			{
-				db = new SQLiteConnection(baseName);
-				db.CreateTable<Node>();
+				var db = GetConnection();
+				db.CreateTableAsync<Node>().Wait();
+				db.CreateTableAsync<Inv>().Wait();
 
-				db.Insert(new Node("127.0.0.1", 8444));
+				db.InsertAsync(new Node("127.0.0.1", 8444)).Wait();
 
-				//db.Insert(new Node("80.69.173.220", 443));
-				//db.Insert(new Node("109.95.105.15", 8443));
-				//db.Insert(new Node("66.65.120.151", 8080));
-				//db.Insert(new Node("76.180.233.38", 8444));
-				//db.Insert(new Node("84.48.88.42", 443));
-				//db.Insert(new Node("74.132.73.137", 443));
-				//db.Insert(new Node("60.242.109.18", 443));
+				//db.InsertAsync(new Node("80.69.173.220", 443)).Wait();
+				//db.InsertAsync(new Node("109.95.105.15", 8443)).Wait();
+				//db.InsertAsync(new Node("66.65.120.151", 8080)).Wait();
+				//db.InsertAsync(new Node("76.180.233.38", 8444)).Wait();
+				//db.InsertAsync(new Node("84.48.88.42", 443)).Wait();
+				//db.InsertAsync(new Node("74.132.73.137", 443)).Wait();
+				//db.InsertAsync(new Node("60.242.109.18", 443)).Wait();
 			}
-			else
-				db = new SQLiteConnection(baseName);
+
+			Inventory = new Inventory(this);
 
 			_listener = new TcpListener(IPAddress.Any, _port);
 			try
@@ -64,7 +69,9 @@ namespace bitmessage
 			_listenerLoopThread = new Thread(new ThreadStart(ListenerLoop)) { IsBackground = true, Name = "ListenerLoop Server" };
 			_listenerLoopThread.Start();
 
-			_clientsControlThread = new Thread(new ThreadStart(ClientsControlLoop)) { IsBackground = true, Name = "ClientsControlLoop" };
+			ClientsControlLoop();
+			
+				_clientsControlThread = new Thread(new ThreadStart(ClientsControlLoop)) { IsBackground = true, Name = "ClientsControlLoop" };
 			_clientsControlThread.Start();
 		}
 
@@ -101,10 +108,10 @@ namespace bitmessage
 		{
 			while (_listener != null)
 			{
-				Client c = new Client(_listener.AcceptTcpClient());
+				Client c = new Client(this, _listener.AcceptTcpClient());
 				Debug.WriteLine("Подключение к серверу c " + c.Node.HostStreamPort);
 				_clients.Add(c); // TODO проверка, что данного клиента ещё нет в списке, иначе заменять существующего?	
-				db.Insert(c.Node);
+				GetConnection().InsertAsync(c.Node).Wait();
 
 				c.Listen();
 			}
@@ -112,8 +119,6 @@ namespace bitmessage
 
 		private void ClientsControlLoop()
 		{
-			var db_local = new SQLiteConnection(_baseName);  //todo из двух потоков, один и тотже файл, это нормально?
-
 			// проверяю _listener, т.к. по такому же условию заканчивается цикл ListenerLoop
 			while (_listener != null)
 			{
@@ -124,14 +129,16 @@ namespace bitmessage
 				// Довожу количество подключенных клиентов до 8
 				if (_clients.Count<8)
 				{
-
-					var query = db_local.Table<Node>().OrderBy(x => x.NumberOfBadConnection);
-					foreach (Node node in query)
+					var conn = GetConnection();
+					var task = conn.Table<Node>().OrderBy(x => x.NumberOfBadConnection).ToListAsync();
+					task.Wait();
+					var nodes = task.Result;
+					foreach (Node node in nodes)
 					{
 						bool find = _clients.Any(c => c.Node.HostStreamPort == node.HostStreamPort);
 						if(!find)
 						{
-							Client c = new Client(node);
+							Client c = new Client(this, node);
 							try
 							{
 								Debug.WriteLine("Пытаюсь подключиться к "+node.HostStreamPort);

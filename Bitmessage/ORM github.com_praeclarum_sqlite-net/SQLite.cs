@@ -1,6 +1,3 @@
-// Этот файл взят из https://github.com/praeclarum/sqlite-net
-
-
 //
 // Copyright (c) 2009-2012 Krueger Systems, Inc.
 // 

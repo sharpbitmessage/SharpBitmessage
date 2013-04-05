@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace bitmessage.network
@@ -71,7 +73,33 @@ namespace bitmessage.network
 			Buffer.BlockCopy(ba, pos, tmp, 0, count);
 			pos += count;
 			return tmp;
-		}		
+		}
+
+		private const int AverageProofOfWorkNonceTrialsPerByte = 320;
+		private const int PayloadLengthExtraBytes = 14000;
+
+
+		public static bool IsProofOfWorkSufficient(this byte[] ba)
+		{
+			var sha512 = new SHA512Managed();
+			byte[] buff = new byte[8 + 512/8];
+			Buffer.BlockCopy(ba, 0, buff, 0, 8);
+
+			int pos = 8;
+			byte[] initialHash = sha512.ComputeHash(ba.ReadBytes(ref pos, ba.Length - pos));
+			Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
+			byte[] resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
+			
+			pos = 0;
+			UInt64 pow = resultHash.ReadUInt64(ref pos);
+
+			UInt64 target =
+				(UInt64) ((decimal) Math.Pow(2, 64)/((ba.Length + PayloadLengthExtraBytes)*AverageProofOfWorkNonceTrialsPerByte));
+
+			Debug.WriteLine("ProofOfWork="+(pow < target) + " pow=" + pow + " target=" + target + " lendth=" + ba.Length);
+
+			return pow < target;
+		}
 	}
 
 	public class ByteArrayComparer : IEqualityComparer<byte[]>
