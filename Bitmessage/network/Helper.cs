@@ -26,7 +26,7 @@ namespace bitmessage.network
 			return (UInt64) (dt - epoch).TotalSeconds;
 		}
 
-		public static DateTime FromUnix(this Int64 unix)
+		public static DateTime FromUnix(this UInt64 unix)
 		{
 			return epoch.AddSeconds(unix);
 		}
@@ -35,7 +35,7 @@ namespace bitmessage.network
 
 		#region VarInt VarStr VarIntList
 
-		private static UInt64 ReadVarInt(this byte[] br, ref int pos)
+		public static UInt64 ReadVarInt(this byte[] br, ref int pos)
 		{
 			byte firstByte = br[pos];
 			pos++;
@@ -51,28 +51,36 @@ namespace bitmessage.network
 			throw new Exception("WTF");
 		}
 
-		private static void WriteVarInt(this BinaryWriter bw, UInt64 i)
+		public static byte[] VarIntToBytes(this UInt64 i)
 		{
+			byte[] result;
 			if (i < 253)
-				bw.Write((Byte) i);
+			{
+				result = new byte[1];
+				result[0] = (Byte) i;
+			}
 			else if (i <= 0xffff)
 			{
-				bw.Write((Byte) 253);
-				bw.Write(BitConverter.GetBytes((UInt16) i).ReverseIfNeed());
+				result = new byte[3];
+				result[0] = 253;
+				Buffer.BlockCopy(BitConverter.GetBytes((UInt16) i).ReverseIfNeed(), 0, result, 1, 2);
 			}
 			else if (i <= 0xffffffff)
 			{
-				bw.Write((Byte) 254);
-				bw.Write(BitConverter.GetBytes((UInt32) i).ReverseIfNeed());
+				result = new byte[5];
+				result[0] = 254;
+				Buffer.BlockCopy(BitConverter.GetBytes((UInt32)i).ReverseIfNeed(), 0, result, 1, 4);
 			}
 			else
 			{
-				bw.Write((Byte) 255);
-				bw.Write(BitConverter.GetBytes((UInt64) i).ReverseIfNeed());
+				result = new byte[9];
+				result[0] = 255;
+				Buffer.BlockCopy(BitConverter.GetBytes((UInt64)i).ReverseIfNeed(), 0, result, 1, 8);
 			}
+			return result;
 		}
 
-		private static string ReadVarStr(this byte[] br, ref int pos)
+		public static string ReadVarStr(this byte[] br, ref int pos)
 		{
 			int l = (int) br.ReadVarInt(ref pos);
 			byte[] bytes = br.ReadBytes(ref pos, l);
@@ -83,7 +91,7 @@ namespace bitmessage.network
 		private static void WriteVarStr(this BinaryWriter bw, string s)
 		{
 			byte[] bytes = Encoding.ASCII.GetBytes(s);
-			bw.WriteVarInt((UInt16) bytes.Length);
+			bw.Write(((UInt64) bytes.Length).VarIntToBytes());
 			bw.Write(bytes);
 		}
 
@@ -98,9 +106,10 @@ namespace bitmessage.network
 
 		private static void WriteVarIntList(this BinaryWriter bw, List<UInt64> list)
 		{
-			bw.WriteVarInt((UInt64) list.Count);
+			bw.Write(((UInt64)list.Count).VarIntToBytes());
+
 			foreach (UInt64 item in list)
-				bw.WriteVarInt(item);
+				bw.Write(item.VarIntToBytes());
 		}
 
 		#endregion VarInt VarStr VarIntList
@@ -295,7 +304,7 @@ namespace bitmessage.network
 		{
 			MemoryStream payloadBuff = new MemoryStream(9 + list.Count * 32);
 			BinaryWriter payload = new BinaryWriter(payloadBuff);
-			payload.WriteVarInt((ulong) list.Count);
+			payload.Write(((ulong) list.Count).VarIntToBytes());
 			foreach(byte[] item in list)
 				payload.Write(item);
 

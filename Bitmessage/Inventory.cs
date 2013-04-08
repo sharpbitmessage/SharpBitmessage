@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using SQLite;
 using System.Collections.Generic;
+using bitmessage.network;
 
 namespace bitmessage
 {
@@ -35,21 +36,50 @@ namespace bitmessage
 			return null;
 		}
 
-		public void Save(Inv inv)
+		//public void Save(Inv inv)
+		//{
+		//	if(inv.Hash.Length!=32) throw new Exception("inv.Hash.Length!=32");
+		//	lock (_items)
+		//	{
+		//		if (Get(inv.Hash) == null)
+		//		{
+		//			_items.Add(inv);
+		//			inv.SaveAsync(_bitmessage.GetConnection());
+		//		}
+		//		else
+		//		{
+		//			inv.SaveAsync(_bitmessage.GetConnection());
+		//		}
+		//	}
+		//}
+
+		internal byte[] Insert(MsgType msgType, byte[] payload)
 		{
-			if(inv.Hash.Length!=32) throw new Exception("inv.Hash.Length!=32");
-			lock (_items)
+			byte[] invHash = payload.CalculateInventoryHash();
+			Inv inv = Get(invHash);
+			if (inv == null)
 			{
-				if (Get(inv.Hash) == null)
+				inv = new Inv
+					      {
+						      Hash = invHash,
+						      ObjectType = msgType,
+						      Payload = payload,
+						      StreamNumber = 1,
+						      ReceivedTime = DateTime.UtcNow.ToUnix(),
+							  EmbeddedTime = payload.GetEmbeddedTime()
+					      };
+
+				if (msgType == MsgType.Broadcast)
 				{
+					Broadcast broadcast = new Broadcast(inv);
+
+
 					_items.Add(inv);
 					inv.SaveAsync(_bitmessage.GetConnection());
 				}
-				else
-				{
-					inv.SaveAsync(_bitmessage.GetConnection());
-				}
 			}
+
+			return inv.Hash;
 		}
 	}
 
@@ -58,10 +88,11 @@ namespace bitmessage
 	{
 		[PrimaryKey]
 		public byte[] Hash { get; set; }
-		public int ObjectType { get; set; }
+		public MsgType ObjectType { get; set; }
 		public int StreamNumber { get; set; }
 		public byte[] Payload { get; set; }
-		public int ReceivedTime { get; set; }
+		public ulong ReceivedTime { get; set; }
+		public ulong EmbeddedTime { get; set; }
 
 		public void SaveAsync(SQLiteAsyncConnection db)
 		{

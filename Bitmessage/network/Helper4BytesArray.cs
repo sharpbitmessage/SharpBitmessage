@@ -77,19 +77,25 @@ namespace bitmessage.network
 
 		private const int AverageProofOfWorkNonceTrialsPerByte = 320;
 		private const int PayloadLengthExtraBytes = 14000;
+		private const int maximumAgeOfAnObjectThatIAmWillingToAccept = 216000;
 
-
-		public static bool IsProofOfWorkSufficient(this byte[] ba)
+		public static bool IsValid(this byte[] ba)
 		{
-			var sha512 = new SHA512Managed();
-			byte[] buff = new byte[8 + 512/8];
-			Buffer.BlockCopy(ba, 0, buff, 0, 8);
+			#region IsProofOfWorkSufficient
 
-			int pos = 8;
-			byte[] initialHash = sha512.ComputeHash(ba.ReadBytes(ref pos, ba.Length - pos));
-			Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
-			byte[] resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
-			
+			int pos;
+			byte[] resultHash;
+			using (var sha512 = new SHA512Managed())
+			{
+				byte[] buff = new byte[8 + 512/8];
+				Buffer.BlockCopy(ba, 0, buff, 0, 8);
+
+				pos = 8;
+				byte[] initialHash = sha512.ComputeHash(ba.ReadBytes(ref pos, ba.Length - pos));
+				Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
+				resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
+			}
+
 			pos = 0;
 			UInt64 pow = resultHash.ReadUInt64(ref pos);
 
@@ -98,8 +104,39 @@ namespace bitmessage.network
 
 			Debug.WriteLine("ProofOfWork="+(pow < target) + " pow=" + pow + " target=" + target + " lendth=" + ba.Length);
 
-			return pow < target;
+			if (pow >= target) return false;
+
+			#endregion IsProofOfWorkSufficient
+
+			#region Check embeddedTime
+			
+			UInt64 embeddedTime = ba.GetEmbeddedTime();
+
+			Debug.WriteLine("embeddedTime = "+embeddedTime.FromUnix());
+
+			if ((embeddedTime > (DateTime.UtcNow.ToUnix() + 10800))
+				|| (embeddedTime < (DateTime.UtcNow.ToUnix() - maximumAgeOfAnObjectThatIAmWillingToAccept)))
+				return false;
+
+			#endregion Check embeddedTime
+
+			return true;
 		}
+
+		public static byte[] CalculateInventoryHash(this byte[] ba)
+		{
+			byte[] inventoryHash = new byte[32];
+			using (var sha512 = new SHA512Managed())
+				Buffer.BlockCopy(sha512.ComputeHash(sha512.ComputeHash(ba)), 0, inventoryHash, 0, 32);
+			return inventoryHash;
+		}
+
+		public static UInt32 GetEmbeddedTime(this byte[] ba)
+		{
+			int pos = 8;
+			return ba.ReadUInt32(ref pos);
+		}
+
 	}
 
 	public class ByteArrayComparer : IEqualityComparer<byte[]>

@@ -142,12 +142,9 @@ namespace bitmessage
 
 					// *************  BROADCAST   *******************
 
-					else if (h.Command == "broadcast")
+					else if ((h.Command == "broadcast") && (payload.Length > 65) && payload.IsValid())
 					{
-					 	if(payload.IsProofOfWorkSufficient())
-					 	{
-					 		//_bitmessage.Inventory.Save();
-					 	}
+						_bitmessage.Inventory.Insert(MsgType.Broadcast, payload);
 					}
 				}
 				else

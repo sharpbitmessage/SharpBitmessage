@@ -32,16 +32,24 @@
     <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="BouncyCastle.Crypto">
+      <HintPath>..\References\BouncyCastle.Crypto.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Address.cs" />
     <Compile Include="AsyncTests.cs" />
+    <Compile Include="bitcoinsharp\EcKey.cs" />
     <Compile Include="bitmessage.cs" />
+    <Compile Include="Broadcast.cs" />
     <Compile Include="Client.cs" />
+    <Compile Include="Crypto\Base58.cs" />
+    <Compile Include="Crypto\ECC.cs" />
     <Compile Include="Inventory.cs" />
     <Compile Include="Message.cs" />
+    <Compile Include="Enum.cs" />
     <Compile Include="network\Header.cs" />
     <Compile Include="network\Helper.cs" />
     <Compile Include="network\Helper4BytesArray.cs" />
