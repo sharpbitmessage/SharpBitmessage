@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Security.Cryptography;
-using Org.BouncyCastle.Asn1.X9;
-using bitmessage.Crypto;
+using BitCoinSharp;
 using bitmessage.network;
 using System.Linq;
 
@@ -21,13 +20,30 @@ namespace bitmessage
 			PublicSigningKeyWitout4Prefics = inv.Payload.ReadBytes(ref pos, 64);
 			PublicEncryptionKeyWitout4Prefics = inv.Payload.ReadBytes(ref pos, 64);
 			AddressHash = inv.Payload.ReadBytes(ref pos, 20);
-			EncodingType = (EncodingType) inv.Payload.ReadVarInt(ref pos);
+			EncodingType = (EncodingType)inv.Payload.ReadVarInt(ref pos);
 			Msg = inv.Payload.ReadVarStr(ref pos);
+			int posOfEndMsg = pos;
 			UInt64 signatureLength = inv.Payload.ReadVarInt(ref pos);
-			Signature = inv.Payload.ReadBytes(ref pos, (int) signatureLength);
+			Signature = inv.Payload.ReadBytes(ref pos, (int)signatureLength);
 
-			MsgStatus = CheckSing();
+			MsgStatus = CheckAddressHash();
+
+			byte[] data = new byte[posOfEndMsg - 12];
+			Buffer.BlockCopy(inv.Payload, 12, data, 0, posOfEndMsg - 12);
+			data = new SHA256Managed().ComputeHash(new SHA256Managed().ComputeHash(data)); //???
+
+			//byte[] s = new EcKey().Sign(dataHash);
+
+			byte[] pub = new byte[PublicSigningKeyWitout4Prefics.Length + 1];
+			pub[0] = 4;
+			Buffer.BlockCopy(PublicSigningKeyWitout4Prefics, 0, pub, 1, PublicSigningKeyWitout4Prefics.Length);
+
+			if (EcKey.Verify(data, Signature, pub))
+				Debug.WriteLine("Ok !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!") ;
+			else
+				Debug.WriteLine("Bad !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		}
+
 		public UInt64 Version { get; set; }
 		public UInt64 AddressVersion { get; set; }
 		public UInt64 StreamNumber { get; set; }
@@ -41,7 +57,7 @@ namespace bitmessage
 
 		public MsgStatus MsgStatus { get; set; }
 
-		private MsgStatus CheckSing()
+		private MsgStatus CheckAddressHash()
 		{
 			#region Check address hash
 			byte[] buff = new byte[PublicSigningKeyWitout4Prefics.Length + PublicEncryptionKeyWitout4Prefics.Length + 2];

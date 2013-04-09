@@ -46,7 +46,6 @@
     <Compile Include="Broadcast.cs" />
     <Compile Include="Client.cs" />
     <Compile Include="Crypto\Base58.cs" />
-    <Compile Include="Crypto\ECC.cs" />
     <Compile Include="Inventory.cs" />
     <Compile Include="Message.cs" />
     <Compile Include="Enum.cs" />
