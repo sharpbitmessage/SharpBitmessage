@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -26,13 +27,30 @@ namespace bitmessage.network
 			return inArray;
 		}
 
-		public static string ToHex(this byte[] ba)
+		public static string ToHex(this byte[] ba)   
 		{
 			StringBuilder sb = new StringBuilder(2 + ba.Length*2);
 			sb.Append("0x");
 			foreach (byte b in ba)
 				sb.AppendFormat("{0:x2}", b);
 			return sb.ToString();
+		}
+
+		public static byte[] HexToBytes(this string hexString)
+		{
+			if (hexString.Length % 2 != 0)
+			{
+				throw new ArgumentException(String.Format(CultureInfo.InvariantCulture, "The binary key cannot have an odd number of digits: {0}", hexString));
+			}
+
+			byte[] hexAsBytes = new byte[hexString.Length / 2];
+			for (int index = 0; index < hexAsBytes.Length; index++)
+			{
+				string byteValue = hexString.Substring(index * 2, 2);
+				hexAsBytes[index] = byte.Parse(byteValue, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+			}
+
+			return hexAsBytes;
 		}
 
 		public static Int32 ReadInt32(this byte[] ba, ref int pos)
@@ -75,68 +93,21 @@ namespace bitmessage.network
 			return tmp;
 		}
 
-		private const int AverageProofOfWorkNonceTrialsPerByte = 320;
-		private const int PayloadLengthExtraBytes = 14000;
-		private const int maximumAgeOfAnObjectThatIAmWillingToAccept = 216000;
-
-		public static bool IsValid(this byte[] ba)
+		public static byte[] Concatenate(this byte[] a, byte[] b)
 		{
-			#region IsProofOfWorkSufficient
-
-			int pos;
-			byte[] resultHash;
-			using (var sha512 = new SHA512Managed())
-			{
-				byte[] buff = new byte[8 + 512/8];
-				Buffer.BlockCopy(ba, 0, buff, 0, 8);
-
-				pos = 8;
-				byte[] initialHash = sha512.ComputeHash(ba.ReadBytes(ref pos, ba.Length - pos));
-				Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
-				resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
-			}
-
-			pos = 0;
-			UInt64 pow = resultHash.ReadUInt64(ref pos);
-
-			UInt64 target =
-				(UInt64) ((decimal) Math.Pow(2, 64)/((ba.Length + PayloadLengthExtraBytes)*AverageProofOfWorkNonceTrialsPerByte));
-
-			Debug.WriteLine("ProofOfWork="+(pow < target) + " pow=" + pow + " target=" + target + " lendth=" + ba.Length);
-
-			if (pow >= target) return false;
-
-			#endregion IsProofOfWorkSufficient
-
-			#region Check embeddedTime
-			
-			UInt64 embeddedTime = ba.GetEmbeddedTime();
-
-			Debug.WriteLine("embeddedTime = "+embeddedTime.FromUnix());
-
-			if ((embeddedTime > (DateTime.UtcNow.ToUnix() + 10800))
-				|| (embeddedTime < (DateTime.UtcNow.ToUnix() - maximumAgeOfAnObjectThatIAmWillingToAccept)))
-				return false;
-
-			#endregion Check embeddedTime
-
-			return true;
+			byte[] buff = new byte[a.Length + b.Length];
+			Buffer.BlockCopy(a, 0, buff, 0, a.Length);
+			Buffer.BlockCopy(b, 0, buff, a.Length, b.Length);
+			return buff;
 		}
 
-		public static byte[] CalculateInventoryHash(this byte[] ba)
+		public static byte[] Concatenate(this byte a, byte[] b)
 		{
-			byte[] inventoryHash = new byte[32];
-			using (var sha512 = new SHA512Managed())
-				Buffer.BlockCopy(sha512.ComputeHash(sha512.ComputeHash(ba)), 0, inventoryHash, 0, 32);
-			return inventoryHash;
+			byte[] buff = new byte[1 + b.Length];
+			buff[0] = a;
+			Buffer.BlockCopy(b, 0, buff, 1, b.Length);
+			return buff;
 		}
-
-		public static UInt32 GetEmbeddedTime(this byte[] ba)
-		{
-			int pos = 8;
-			return ba.ReadUInt32(ref pos);
-		}
-
 	}
 
 	public class ByteArrayComparer : IEqualityComparer<byte[]>

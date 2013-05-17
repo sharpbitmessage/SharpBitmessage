@@ -2,12 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Threading;
 using bitmessage.network;
+using Version = bitmessage.network.Version;
 
 namespace bitmessage
 {
@@ -81,17 +80,17 @@ namespace bitmessage
 			NetworkStream ns = _tcpClient.GetStream();
 			while (ns.CanRead)
 			{
-				Header h = BinaryReader.ReadHeader();
-				byte[] payload = BinaryReader.ReadBytes((int) h.Length);
+				Header h        = BinaryReader.ReadHeader();
+				Payload payload = new Payload(h.Command, BinaryReader.ReadBytes((int) h.Length));
 
-				byte[] sha512 = new SHA512Managed().ComputeHash(payload);
+				byte[] sha512 = payload.Sha512;
 
 				bool checksum = true;
 
 				for (int i = 0; i < 4; ++i)
 					checksum = checksum && (sha512[i] == h.Checksum[i]);
 
-				if (checksum)
+				if ( checksum && payload.IsValid )
 				{
 					debug("Command=" + h.Command);
 					
@@ -99,29 +98,38 @@ namespace bitmessage
 
 					if (h.Command == "version")
 					{
-						network.Version v = payload.ToVersion();
-						if (v.Value != 1)
-							Stop("Version = " + v.Value);
-						else if (v.Nonce == network.Version.EightBytesOfRandomDataUsedToDetectConnectionsToSelf)
-							Stop("DetectConnectionsToSelf");
+						Version v = new Version(payload);
 						debug("Подключились с " + v.UserAgent);
-
-						BinaryWriter.SendVerack();
+						if ((v.Value != 1) && (v.Value != 2))
+							Stop("Version = " + v.Value);
+						else if (v.Nonce == Version.EightBytesOfRandomDataUsedToDetectConnectionsToSelf)
+							Stop("DetectConnectionsToSelf");
+						else
+							BinaryWriter.SendVerack();
 					}
 
 					#endregion VERSION
-
+				
 					#region INV
 
 					else if (h.Command == "inv")
 					{
 						debug("Load inv");
 						List<byte[]> buff = new List<byte[]>(payload.Length/32);
-						buff.AddRange(payload.ToInv().Where(item => _bitmessage.Inventory.Get(item) == null));
+						
+						foreach (byte[] bytese in payload.Data.ToInv())
+							if (!_bitmessage.Inventory.Exists(bytese))
+								buff.Add(bytese);
+
 						if (buff.Count > 0)
 						{
-							debug("SendVerack count=" + buff.Count);
-							BinaryWriter.SendGetdata(buff);
+							debug("SendGetdata count=" + buff.Count);
+							try
+							{
+								BinaryWriter.SendGetdata(buff);
+							}
+							catch (IOException)
+							{} // игнорируем проблеммы с сетью. while (ns.CanRead) - завершит поток.
 						}
 					}
 
@@ -129,10 +137,21 @@ namespace bitmessage
 
 					// *************  PUBKEY   *******************
 
+					else if (h.Command == "getpubkey")
+					{
+					}	
+
 					else if (h.Command == "pubkey")
 					{
-			
-					}	
+						_bitmessage.Inventory.Insert(MsgType.Pubkey, payload);
+
+						Pubkey pubkey = new Pubkey(payload);
+
+						if (pubkey.Status == Status.Valid)
+							_bitmessage.OnReceivePubkey(pubkey);
+						else
+							_bitmessage.OnReceiveInvalidPubkey(pubkey);
+					}
 
 					// *************  MSG   *******************
 
@@ -142,10 +161,35 @@ namespace bitmessage
 
 					// *************  BROADCAST   *******************
 
-					else if ((h.Command == "broadcast") && (payload.Length > 65) && payload.IsValid())
+					else if (h.Command == "broadcast")
 					{
 						_bitmessage.Inventory.Insert(MsgType.Broadcast, payload);
+
+						Broadcast broadcast = new Broadcast(payload);
+
+						if (broadcast.Status == Status.Valid)
+							_bitmessage.OnReceiveBroadcast(broadcast);
+						else
+							_bitmessage.OnReceiveInvalidBroadcast(broadcast);
 					}
+
+					else if (h.Command == "addr")
+					{
+						int pos = 0;
+						UInt64 numberOfAddressesIncluded = payload.Data.ReadVarInt(ref pos);
+						if ((numberOfAddressesIncluded > 0) && (numberOfAddressesIncluded < 1001))
+						{
+							if (payload.Length != (pos + (34 * (int)numberOfAddressesIncluded)))
+								throw new Exception("addr message does not contain the correct amount of data. Ignoring.");							
+
+							//bool needToWriteKnownNodesToDisk = false;
+
+							//for(int i=0;i<=(int)numberOfAddressesIncluded;++i)
+							//{
+							//	!!!  diffrent for 1 or 2 remoteProtocolVersion
+							//}
+						}
+					}					
 				}
 				else
 					debug("checksum error");
@@ -157,7 +201,8 @@ namespace bitmessage
 		public void Connect()
 		{
 			_tcpClient.Connect(Node.Host, Node.Port);
-			BinaryWriter.WriteVersion(new network.Version());
+			Version v = new Version();
+			v.Send(BinaryWriter);
 			Listen();
 		}
 	}

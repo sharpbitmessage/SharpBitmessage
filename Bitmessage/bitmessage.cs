@@ -20,8 +20,8 @@ namespace bitmessage
 		private readonly Thread _listenerLoopThread;
 		private readonly Thread _clientsControlThread;
 
-		private string _baseName;
-		private int _port;
+		private readonly string _baseName;
+		private readonly int _port;
 
 		public SQLiteAsyncConnection GetConnection()
 		{
@@ -37,7 +37,7 @@ namespace bitmessage
 			{
 				var db = GetConnection();
 				db.CreateTableAsync<Node>().Wait();
-				db.CreateTableAsync<Inv>().Wait();
+				db.CreateTableAsync<Payload>().Wait();
 
 				db.InsertAsync(new Node("127.0.0.1", 8444)).Wait();
 
@@ -66,18 +66,16 @@ namespace bitmessage
 				Debug.WriteLine("Сервер стартовал нормально");
 			}
 
-			_listenerLoopThread = new Thread(new ThreadStart(ListenerLoop)) { IsBackground = true, Name = "ListenerLoop Server" };
+			_listenerLoopThread = new Thread(ListenerLoop) { IsBackground = true, Name = "ListenerLoop Server" };
 			_listenerLoopThread.Start();
 
-			ClientsControlLoop();
-			
-				_clientsControlThread = new Thread(new ThreadStart(ClientsControlLoop)) { IsBackground = true, Name = "ClientsControlLoop" };
+			_clientsControlThread = new Thread(ClientsControlLoop) { IsBackground = true, Name = "ClientsControlLoop" };
 			_clientsControlThread.Start();
 		}
 
 	    #region Dispose
 
-		private bool _disposed = false;
+		private bool _disposed;
 
 		public void Dispose()
 		{
@@ -108,12 +106,16 @@ namespace bitmessage
 		{
 			while (_listener != null)
 			{
-				Client c = new Client(this, _listener.AcceptTcpClient());
-				Debug.WriteLine("Подключение к серверу c " + c.Node.HostStreamPort);
-				_clients.Add(c); // TODO проверка, что данного клиента ещё нет в списке, иначе заменять существующего?	
-				GetConnection().InsertAsync(c.Node).Wait();
+				Client incoming = new Client(this, _listener.AcceptTcpClient());
+				Debug.WriteLine("Подключение к серверу c " + incoming.Node.HostStreamPort);
 
-				c.Listen();
+				foreach (var client in _clients)
+					if (client.Node.HostStreamPort == incoming.Node.HostStreamPort)
+						client.Stop();
+
+				_clients.Add(incoming);
+
+				incoming.Listen();
 			}
 		}
 
@@ -162,34 +164,66 @@ namespace bitmessage
 			}
 		}
 
-		#region see https://bitmessage.org/wiki/API_Reference
+		public event Broadcast.EventHandler ReceiveBroadcast;
+		public event Broadcast.EventHandler ReceiveInvalidBroadcast;
+		public event Pubkey.EventHandler    ReceivePubkey;
+	    public event Pubkey.EventHandler    ReceiveInvalidPubkey;
 
-		public IEnumerable<Address> listAddresses()
+	    public void OnReceiveBroadcast(Broadcast broadcast)
+	    {
+		    Broadcast.EventHandler handler = ReceiveBroadcast;
+		    if (handler != null) handler(broadcast);
+	    }
+
+		public void OnReceiveInvalidBroadcast(Broadcast broadcast)
+		{
+			Broadcast.EventHandler handler = ReceiveInvalidBroadcast;
+			if (handler != null) handler(broadcast);
+		}
+
+		public void OnReceivePubkey(Pubkey pubkey)
+		{
+			Pubkey.EventHandler handler = ReceivePubkey;
+			if (handler != null) handler(pubkey);
+		}
+
+		public void OnReceiveInvalidPubkey(Pubkey pubkey)
+		{
+			Pubkey.EventHandler handler = ReceiveInvalidPubkey;
+			if (handler != null) handler(pubkey);
+		}
+
+
+
+
+	    #region see https://bitmessage.org/wiki/API_Reference
+
+		public IEnumerable<Address> ListAddresses()
 		{
 			throw new NotImplementedException();
 		}
 
-		public Address createRandomAddress(string label, bool eighteenByteRipe = false)
+		public Address CreateRandomAddress(string label, bool eighteenByteRipe = false)
 		{
 			throw new NotImplementedException();
 		}
 
-	    public IEnumerable<Message> getAllInboxMessages()
+	    public IEnumerable<Message> GetAllInboxMessages()
 	    {
 			throw new NotImplementedException();
 	    }
 
-		public void trashMessage(string msgid)
+		public void TrashMessage(string msgid)
 		{
 			throw new NotImplementedException();
 		}
 
-		public void sendMessage(Address toAddress, Address fromAddress,string subject,string message, int encodingType = 2)
+		public void SendMessage(Address toAddress, Address fromAddress,string subject,string message, int encodingType = 2)
 		{
 			throw new NotImplementedException();
 		}
 
-		public void sendBroadcast(Address toAddress, Address fromAddress, string subject, string message, int encodingType = 2)
+		public void SendBroadcast(Address fromAddress, string subject, string message, int encodingType = 2)
 		{
 			throw new NotImplementedException();
 		}

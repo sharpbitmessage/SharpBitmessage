@@ -1,81 +1,47 @@
-﻿//  see https://bitcointalk.org/index.php?topic=25141.0;wap2
-//  see https://gist.github.com/CodesInChaos/3175971
-
-using System;
+﻿using System;
+using System.Numerics;
 using System.Security.Cryptography;
+using System.Text;
 using bitmessage.network;
 
 namespace bitmessage.Crypto
 {
 	public static class Base58
 	{
-		private const string B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-		private static readonly Org.BouncyCastle.Math.BigInteger Big0 = new Org.BouncyCastle.Math.BigInteger("0");
-		private static readonly Org.BouncyCastle.Math.BigInteger Big58 = new Org.BouncyCastle.Math.BigInteger("58");
-
-		public static byte[] Base58ToByteArray(this string base58)
-		{
-			Org.BouncyCastle.Math.BigInteger bi2 = new Org.BouncyCastle.Math.BigInteger("0");
-
-			foreach (char c in base58)
-			{
-				if (B58.IndexOf(c) != -1)
-				{
-					bi2 = bi2.Multiply(new Org.BouncyCastle.Math.BigInteger("58"));
-					bi2 = bi2.Add(new Org.BouncyCastle.Math.BigInteger(B58.IndexOf(c).ToString()));
-				}
-				else
-				{
-					return null;
-				}
-			}
-			byte[] bb = bi2.ToByteArrayUnsigned();
-
-			// interpret leading '1's as leading zero bytes
-			foreach (char c in base58)
-			{
-				if (c != '1') break;
-				byte[] bbb = new byte[bb.Length + 1];
-				Array.Copy(bb, 0, bbb, 1, bb.Length);
-				bb = bbb;
-			}
-
-			if (bb.Length < 4) return null;
-
-			SHA256CryptoServiceProvider sha256 = new SHA256CryptoServiceProvider();
-			byte[] checksum = sha256.ComputeHash(bb, 0, bb.Length - 4);
-			checksum = sha256.ComputeHash(checksum);
-			for (int i = 0; i < 4; i++)
-			{
-				if (checksum[i] != bb[bb.Length - 4 + i]) return null;
-			}
-
-			byte[] rv = new byte[bb.Length - 4];
-			Array.Copy(bb, 0, rv, 0, bb.Length - 4);
-			return rv;
-		}
+		private static readonly char[] B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".ToCharArray();
+		private static readonly BigInteger Big58 = new BigInteger(58);
 
 		public static string ByteArrayToBase58(this byte[] ba)
 		{
-			Org.BouncyCastle.Math.BigInteger addrremain = new Org.BouncyCastle.Math.BigInteger(1, ba);
+			byte[] positiveBa;
+			//if (ba[ba.Length - 1] > 0x80)
+			//{
+			//	positiveBa = new byte[ba.Length + 1];
+			//	Array.Copy(ba, positiveBa, ba.Length);
+			//}
+			//else
+			positiveBa = ba;
+			Array.Reverse(positiveBa);
 
-			string rv = "";
+			BigInteger addrremain = new BigInteger(positiveBa);
 
-			while (addrremain.CompareTo(Big0) > 0)
+			StringBuilder rv = new StringBuilder(100);
+
+			while (addrremain.CompareTo(BigInteger.Zero) > 0)
 			{
-				int d = Convert.ToInt32(addrremain.Mod(Big58).ToString());
-				addrremain = addrremain.Divide(Big58);
-				rv = B58.Substring(d, 1) + rv;
+				var remainder = addrremain % 58;
+				addrremain    = addrremain / 58;
+				rv.Insert(0, B58[(int) remainder]);
 			}
 
 			// handle leading zeroes
 			foreach (byte b in ba)
 			{
 				if (b != 0) break;
-				rv = "1" + rv;
-
+				rv = rv.Insert(0, '1');
 			}
-			return rv;
+			string result = rv.ToString();
+			return result;
 		}
 
 		public static string ByteArrayToBase58Check(this byte[] ba)
@@ -89,7 +55,7 @@ namespace bitmessage.Crypto
 			return ByteArrayToBase58(bb);
 		}
 
-		public static string EncodeAddress(UInt64 version,UInt64 stream,byte[] ripe)
+		public static string EncodeAddress(UInt64 version, UInt64 stream, byte[] ripe)
 		{
 			byte[] v = version.VarIntToBytes();
 			byte[] s = stream.VarIntToBytes();
@@ -107,7 +73,8 @@ namespace bitmessage.Crypto
 			Buffer.BlockCopy(s, 0, buff, v.Length, s.Length);
 			Buffer.BlockCopy(ripe, repeOffset, buff, v.Length + s.Length, ripe.Length - repeOffset);
 
-			return "BM-" + ByteArrayToBase58Check(buff);
+			string result = "BM-" + ByteArrayToBase58Check(buff);
+			return result;
 		}
 	}
 }
