@@ -38,6 +38,8 @@ namespace bitmessage
 				var db = GetConnection();
 				db.CreateTableAsync<Node>().Wait();
 				db.CreateTableAsync<Payload>().Wait();
+				db.CreateTableAsync<Pubkey>().Wait();
+				db.CreateTableAsync<PrivateKey>().Wait();
 
 				db.InsertAsync(new Node("127.0.0.1", 8444)).Wait();
 
@@ -193,19 +195,18 @@ namespace bitmessage
 			if (handler != null) handler(pubkey);
 		}
 
-
-
-
 	    #region see https://bitmessage.org/wiki/API_Reference
 
-		public IEnumerable<Address> ListAddresses()
+		public IEnumerable<PrivateKey> ListAddresses()
 		{
-			throw new NotImplementedException();
+			return PrivateKey.GetAll(GetConnection());
 		}
 
-		public Address CreateRandomAddress(string label, bool eighteenByteRipe = false)
+		public PrivateKey CreateRandomAddress(string label, bool eighteenByteRipe = false)
 		{
-			throw new NotImplementedException();
+			PrivateKey privateKey = new PrivateKey(label, eighteenByteRipe);
+			privateKey.SaveAsync(GetConnection());
+			return privateKey;
 		}
 
 	    public IEnumerable<Message> GetAllInboxMessages()
@@ -218,14 +219,23 @@ namespace bitmessage
 			throw new NotImplementedException();
 		}
 
-		public void SendMessage(Address toAddress, Address fromAddress,string subject,string message, int encodingType = 2)
+		public void SendMessage(Pubkey toAddress, Pubkey fromAddress, string subject, string message, int encodingType = 2)
 		{
 			throw new NotImplementedException();
 		}
 
-		public void SendBroadcast(Address fromAddress, string subject, string message, int encodingType = 2)
+		public void SendBroadcast(PrivateKey fromAddress, string subject, string message, int encodingType = 2)
 		{
 			throw new NotImplementedException();
+		}
+
+		public void SendBroadcast(string fromAddress, string subject, string message, int encodingType = 2)
+		{
+			PrivateKey fromPrivateKey = PrivateKey.GetPrivateKey(GetConnection(), fromAddress);
+			if (fromPrivateKey != null)
+				SendBroadcast(fromPrivateKey, subject, message, encodingType);
+			else
+				throw new Exception("Don't find private key");
 		}
 
 		#endregion see https://bitmessage.org/wiki/API_Reference

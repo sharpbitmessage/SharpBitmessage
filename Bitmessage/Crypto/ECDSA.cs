@@ -6,10 +6,13 @@ namespace bitmessage.Crypto
 {
 	public static class ECDSA
 	{
+		public static byte[] ECDSASign(this byte[] data, byte[] publicSigningKey)
+		{
+			throw new NotImplementedException();
+		}
+
 		public static bool ECDSAVerify(this byte[] data, byte[] publicSigningKey, byte[] signature)
 		{
-			Contract.Requires(publicSigningKey.Length == 65);
-			
 			byte[] pubkeyX = new byte[32];
 			byte[] pubkeyY = new byte[32];
 

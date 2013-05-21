@@ -37,7 +37,6 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Address.cs" />
     <Compile Include="AsyncTests.cs" />
     <Compile Include="bitmessage.cs" />
     <Compile Include="Broadcast.cs" />
@@ -55,6 +54,7 @@
     <Compile Include="network\Helper4BytesArray.cs" />
     <Compile Include="network\NetworkAddress.cs" />
     <Compile Include="network\Payload.cs" />
+    <Compile Include="network\PrivateKey.cs" />
     <Compile Include="network\Pubkey.cs" />
     <Compile Include="network\Version.cs" />
     <Compile Include="network\Node.cs" />

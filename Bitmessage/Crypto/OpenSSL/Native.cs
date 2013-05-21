@@ -121,7 +121,7 @@ namespace OpenSSL.Core
 		/// This is the name of the DLL that P/Invoke loads and tries to bind all of
 		/// these native functions to.
 		/// </summary>
-		const string DLLNAME = "libeay32";
+		const string DLLNAME = "libeay32"; 
 		const string SSLDLLNAME = "ssleay32";
 
 		#region Delegates
@@ -1964,6 +1964,14 @@ namespace OpenSSL.Core
 		
 		[DllImport(DLLNAME, CallingConvention=CallingConvention.Cdecl)]
 		public extern static int EC_KEY_check_key(IntPtr key);
+
+		// Добавленно
+		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+		public extern static int i2o_ECPublicKey(IntPtr encKey, ref IntPtr outPar);
+
+		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+		public static extern int i2o_ECPublicKey(IntPtr encKey, int outPar);
+
 		#endregion
 		
 		#region ECDSA

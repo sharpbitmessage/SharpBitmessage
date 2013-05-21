@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using bitmessage;
 using bitmessage.Crypto;
 using bitmessage.network;
@@ -19,11 +18,20 @@ namespace test
 
 			//Broadcast.Test();
 			var bm = new Bitmessage();
-			bm.ReceiveBroadcast += NewBroadcast;
-			bm.ReceiveInvalidBroadcast += NewBroadcast;
-			bm.ReceivePubkey += NewPubkey;
-			bm.ReceiveInvalidPubkey += NewPubkey;
-			Console.ReadLine();
+
+			#region test send from not my address
+
+			//PrivateKey pk = new PrivateKey();
+
+			bm.SendBroadcast("BM-GtovgYdgs7qXPkoYaRgrLFuFKz1SFpsw", "PyBitmessage Client Vulnerability", "Vulnerability allows to send messages to other people's addresses");
+
+			#endregion 
+
+			//bm.ReceiveBroadcast += NewBroadcast;
+			//bm.ReceiveInvalidBroadcast += NewBroadcast;
+			//bm.ReceivePubkey += NewPubkey;
+			//bm.ReceiveInvalidPubkey += NewPubkey;
+			//Console.ReadLine();
 			//Console.WriteLine(bm.ToString());
 		}
 

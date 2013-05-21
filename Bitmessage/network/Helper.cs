@@ -51,6 +51,12 @@ namespace bitmessage.network
 			throw new Exception("WTF");
 		}
 
+		public static void WriteVarInt(this MemoryStream ms, UInt64 data)
+		{
+			byte[] bytes = data.VarIntToBytes();
+			ms.Write(bytes, 0, bytes.Length);
+		}
+
 		public static byte[] VarIntToBytes(this UInt64 i)
 		{
 			byte[] result;
@@ -82,12 +88,41 @@ namespace bitmessage.network
 
 		public static string ReadVarStr(this byte[] br, ref int pos)
 		{
-			int l = (int) br.ReadVarInt(ref pos);
+			int l = (int)br.ReadVarInt(ref pos);
 			byte[] bytes = br.ReadBytes(ref pos, l);
 			Char[] chars = Encoding.ASCII.GetChars(bytes);
 			return new String(chars);
 		}
 
+		public static void WriteVarStr(this MemoryStream ms, string data)
+		{
+			byte[] bytes = Encoding.ASCII.GetBytes(data);
+			ms.WriteVarInt((UInt64) bytes.Length);
+			ms.Write(bytes, 0, bytes.Length);
+		}
+
+		public static void ReadVarStrSubjectAndBody(this byte[] br, ref int pos, out string subject, out string body)
+		{
+			subject = null;
+			body = null;
+
+			int l = (int)br.ReadVarInt(ref pos);
+			
+			for(int i = pos;i<pos+l;++i)
+				if (br[i] == 0x0A) // find first /n
+				{
+					byte[] bytes = br.ReadBytes(ref pos, i - pos);
+					Char[] chars = Encoding.ASCII.GetChars(bytes);
+					subject = new String(chars);
+
+					++i;
+					bytes = br.ReadBytes(ref i, l - (i - pos) - 1);
+					chars = Encoding.ASCII.GetChars(bytes);
+					body = new String(chars);
+				}
+			pos += l;
+		}
+		
 		public static void WriteVarStr(this BinaryWriter bw, string s)
 		{
 			byte[] bytes = Encoding.ASCII.GetBytes(s);

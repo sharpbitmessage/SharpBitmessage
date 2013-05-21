@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -83,6 +84,27 @@ namespace bitmessage.network
 			Buffer.BlockCopy(ba, pos, tmp, 0, 8);
 			pos += 8;
 			return BitConverter.ToUInt64(tmp.ReverseIfNeed(), 0);
+		}
+
+		public static void Write(this MemoryStream ms, UInt64 data)
+		{
+			byte[] tmp = BitConverter.GetBytes(data);
+			tmp.ReverseIfNeed();
+			ms.Write(tmp, 0, tmp.Length);
+		}
+
+		public static void Write(this MemoryStream ms, UInt32 data)
+		{
+			byte[] tmp = BitConverter.GetBytes(data);
+			tmp.ReverseIfNeed();
+			ms.Write(tmp, 0, tmp.Length);
+		}
+
+		public static void Write(this MemoryStream ms, byte data)
+		{
+			byte[] tmp = BitConverter.GetBytes(data);
+			tmp.ReverseIfNeed();
+			ms.Write(tmp, 0, tmp.Length);
 		}
 
 		public static byte[] ReadBytes(this byte[] ba, ref int pos, int count)
