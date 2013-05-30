@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using bitmessage;
 using bitmessage.Crypto;
 using bitmessage.network;
@@ -9,13 +10,6 @@ namespace test
 	{
 		static void Main(string[] args)
 		{
-			#region test EncodeAddress function
-			string r = Base58.EncodeAddress(2, 1, "0076a3ac7aeaea90975d269b48fefe7a2eff1bff".HexToBytes());
-
-			if ( r != "BM-oowmchsQvK7FBkTxwXErcF3acitN4tWGQ")
-				throw new Exception("EncodeAddress not work");
-			#endregion
-
 			//Broadcast.Test();
 			var bm = new Bitmessage();
 
@@ -23,7 +17,10 @@ namespace test
 
 			//PrivateKey pk = new PrivateKey();
 
-			bm.SendBroadcast("BM-GtovgYdgs7qXPkoYaRgrLFuFKz1SFpsw", "PyBitmessage Client Vulnerability", "Vulnerability allows to send messages to other people's addresses");
+			PrivateKey pk = new PrivateKey("my");
+			pk.SaveAsync(bm.GetConnection());
+			Thread.Sleep(1000);
+			bm.SendBroadcast(pk.Name, "PyBitmessage Client Vulnerability", "Vulnerability allows to send messages to other people's addresses");
 
 			#endregion 
 

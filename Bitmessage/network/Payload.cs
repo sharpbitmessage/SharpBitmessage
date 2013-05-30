@@ -63,7 +63,11 @@ namespace bitmessage.network
 			set { _receivedTime = value; }
 		}
 
-		public void SaveAsync(SQLiteAsyncConnection db) { db.InsertAsync(this); }
+		public void SaveAsync(Bitmessage bm)
+		{
+			bm.GetConnection().InsertAsync(this);
+			bm.OnNewPayload(this);
+		}
 
 		public Payload() {}
 
@@ -80,38 +84,6 @@ namespace bitmessage.network
 		{
 			Data = data;
 			MsgTypeString = msgType;
-		}
-
-		[Ignore]
-		public bool IsProofOfWorkSufficient
-		{
-			get
-			{
-				int pos;
-				byte[] resultHash;
-				using (var sha512 = new SHA512Managed())
-				{
-					byte[] buff = new byte[8 + 512/8];
-					Buffer.BlockCopy(Data, 0, buff, 0, 8);
-
-					pos = 8;
-					byte[] initialHash = sha512.ComputeHash(Data.ReadBytes(ref pos, Data.Length - pos));
-					Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
-					resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
-				}
-
-				pos = 0;
-				UInt64 pow = resultHash.ReadUInt64(ref pos);
-
-				UInt64 target =
-					(UInt64)
-					((decimal) Math.Pow(2, 64)/((Data.Length + PayloadLengthExtraBytes)*AverageProofOfWorkNonceTrialsPerByte));
-
-				Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + Data.Length);
-
-				if (pow < target) return true;
-				return false;
-			}
 		}
 
 		[Ignore]
@@ -214,5 +186,74 @@ namespace bitmessage.network
 				return true;
 			}
 		}
+
+		[Ignore]
+		public bool IsProofOfWorkSufficient
+		{
+			get
+			{
+				int pos;
+				byte[] resultHash;
+				using (var sha512 = new SHA512Managed())
+				{
+					byte[] buff = new byte[8 + 512 / 8];
+					Buffer.BlockCopy(Data, 0, buff, 0, 8);
+
+					pos = 8;
+					byte[] initialHash = sha512.ComputeHash(Data.ReadBytes(ref pos, Data.Length - pos));
+					Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
+					resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
+				}
+
+				pos = 0;
+				UInt64 pow = resultHash.ReadUInt64(ref pos);
+
+				UInt64 target =
+					(UInt64)
+					((decimal)Math.Pow(2, 64) / ((Data.Length + PayloadLengthExtraBytes) * AverageProofOfWorkNonceTrialsPerByte));
+
+				Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + Data.Length);
+
+				if (pow < target) return true;
+				return false;
+			}
+		}
+
+		public static byte[] AddProofOfWork(byte[] data)
+		{
+			UInt64 target =
+				(UInt64)
+				((decimal) Math.Pow(2, 64)/((8 + data.Length + PayloadLengthExtraBytes)*AverageProofOfWorkNonceTrialsPerByte));
+
+			UInt64 trialValue = UInt64.MaxValue;			
+			byte[] initialHash = new byte[8 + 512/8];
+
+			using (var sha512 = new SHA512Managed())
+			{
+				Buffer.BlockCopy(sha512.ComputeHash(data), 0, initialHash, 8, 512/8);
+
+				while (trialValue > target)
+				{
+					for (int i = 0; i < 9; ++i) // nonce = nonce + 1
+					{
+						initialHash[i] += 1;
+						if (initialHash[i] != 0) break;
+						if (i == 8) throw new Exception("don't can calculate pow");
+					}
+
+					byte[] resultHash = sha512.ComputeHash(sha512.ComputeHash(initialHash));
+
+					int pos = 0;
+					trialValue = resultHash.ReadUInt64(ref pos);
+				}
+			}
+			
+			byte[] result = new byte[8 + data.Length];
+			Buffer.BlockCopy(initialHash, 0, result, 0, 8);
+			Buffer.BlockCopy(data, 0, result, 8, data.Length);
+			return result;
+		}
+
+		public delegate void EventHandler(Payload payload);
 	}
 }

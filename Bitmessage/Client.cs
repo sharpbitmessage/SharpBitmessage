@@ -40,6 +40,7 @@ namespace bitmessage
 		public Client(Bitmessage bitmessage, TcpClient tcpClient)
 		{
 			_bitmessage = bitmessage;
+			_bitmessage.NewPayload += BitmessageNewPayload;
 			_tcpClient = tcpClient;
 			IPEndPoint ipep = (IPEndPoint)tcpClient.Client.RemoteEndPoint;
 			Node = new Node
@@ -51,13 +52,21 @@ namespace bitmessage
 					        Port = ipep.Port,
 					        NumberOfBadConnection = 0
 				        };
+
 		}
 
 		public Client(Bitmessage bitmessage, Node node)
 		{
 			_bitmessage = bitmessage;
+			_bitmessage.NewPayload += BitmessageNewPayload;
 			Node = node;
 			_tcpClient = new TcpClient(AddressFamily.InterNetwork);
+		}
+
+		void BitmessageNewPayload(Payload payload)
+		{
+			throw new NotImplementedException();
+			BinaryWriter.WriteHeader("inv", null);  // !!!!!!!!!!   TODO Send inv command
 		}
 
 		internal void Listen()
@@ -189,7 +198,11 @@ namespace bitmessage
 							//	!!!  diffrent for 1 or 2 remoteProtocolVersion
 							//}
 						}
-					}					
+					}
+					else if (h.Command=="getdata")
+					{
+						throw new NotImplementedException();
+					}
 				}
 				else
 					debug("checksum error");

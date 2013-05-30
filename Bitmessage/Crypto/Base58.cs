@@ -2,7 +2,6 @@
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
-using bitmessage.network;
 
 namespace bitmessage.Crypto
 {
@@ -11,19 +10,55 @@ namespace bitmessage.Crypto
 		private static readonly char[] B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".ToCharArray();
 		private static readonly BigInteger Big58 = new BigInteger(58);
 
+		public static byte[] Base58ToByteArray(string base58)
+		{
+			BigInteger bi2 = new BigInteger(0);
+			string b58 =new string(B58);
+
+			foreach (char c in base58)
+			{
+				if (b58.IndexOf(c) != -1)
+				{
+					bi2 = BigInteger.Multiply(bi2, Big58);
+					bi2 = BigInteger.Add(bi2, b58.IndexOf(c));
+				}				
+				else
+					return null;
+			}
+
+			byte[] bb = bi2.ToByteArray();
+			if (bb[bb.Length-1]==0)
+			{
+				byte[] withoutZero = new byte[bb.Length-1];
+				Buffer.BlockCopy(bb, 0, withoutZero, 0, bb.Length - 1);
+				bb = withoutZero;
+			}
+			Array.Reverse(bb);
+			return bb;
+		}
+
+		public static byte[] Base58ToByteArrayCheck(string base58)
+		{
+			byte[] bytes = Base58ToByteArray(base58);
+			byte[] result = new byte[bytes.Length-4];
+			Buffer.BlockCopy(bytes, 0, result, 0, result.Length); // TODO Check hash
+			return result;
+		}
+
 		public static string ByteArrayToBase58(this byte[] ba)
 		{
+			byte[] tmp = ba;
+			Array.Reverse(tmp);
 			byte[] positiveBa;
-			//if (ba[ba.Length - 1] > 0x80)
-			//{
-			//	positiveBa = new byte[ba.Length + 1];
-			//	Array.Copy(ba, positiveBa, ba.Length);
-			//}
-			//else
-			positiveBa = ba;
-			Array.Reverse(positiveBa);
+			if (tmp[tmp.Length - 1] >= 0x80)
+			{
+				positiveBa = new byte[ba.Length + 1];
+				Array.Copy(tmp, positiveBa, tmp.Length);
+			}
+			else positiveBa = tmp;
 
 			BigInteger addrremain = new BigInteger(positiveBa);
+			if (addrremain<0) throw new Exception("Negative? I wont positive");
 
 			StringBuilder rv = new StringBuilder(100);
 
@@ -53,28 +88,6 @@ namespace bitmessage.Crypto
 			thehash = sha512.ComputeHash(thehash);
 			for (int i = 0; i < 4; i++) bb[ba.Length + i] = thehash[i];
 			return ByteArrayToBase58(bb);
-		}
-
-		public static string EncodeAddress(UInt64 version, UInt64 stream, byte[] ripe)
-		{
-			byte[] v = version.VarIntToBytes();
-			byte[] s = stream.VarIntToBytes();
-
-			int repeOffset = 0;
-
-			if (version >= 2)
-				if ((ripe[0] == 0) && (ripe[1] == 0))
-					repeOffset = 2;
-				else if (ripe[0] == 0)
-					repeOffset = 1;
-
-			byte[] buff = new byte[v.Length + s.Length + ripe.Length - repeOffset];
-			Buffer.BlockCopy(v, 0, buff, 0, v.Length);
-			Buffer.BlockCopy(s, 0, buff, v.Length, s.Length);
-			Buffer.BlockCopy(ripe, repeOffset, buff, v.Length + s.Length, ripe.Length - repeOffset);
-
-			string result = "BM-" + ByteArrayToBase58Check(buff);
-			return result;
 		}
 	}
 }

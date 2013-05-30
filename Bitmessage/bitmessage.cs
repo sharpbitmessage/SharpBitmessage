@@ -166,10 +166,17 @@ namespace bitmessage
 			}
 		}
 
+		public event Payload.EventHandler   NewPayload;
 		public event Broadcast.EventHandler ReceiveBroadcast;
 		public event Broadcast.EventHandler ReceiveInvalidBroadcast;
 		public event Pubkey.EventHandler    ReceivePubkey;
 	    public event Pubkey.EventHandler    ReceiveInvalidPubkey;
+
+		public void OnNewPayload(Payload payload)
+		{
+			Payload.EventHandler handler = NewPayload;
+			if (handler != null) handler(payload);
+		}
 
 	    public void OnReceiveBroadcast(Broadcast broadcast)
 	    {
@@ -224,18 +231,26 @@ namespace bitmessage
 			throw new NotImplementedException();
 		}
 
-		public void SendBroadcast(PrivateKey fromAddress, string subject, string message, int encodingType = 2)
+		public void SendBroadcast(PrivateKey fromAddress, string subject, string body, int encodingType = 2)
 		{
-			throw new NotImplementedException();
+			Broadcast broadcast = new Broadcast
+				                      {
+										  Key = fromAddress,
+										  Body = body,
+										  Subject = subject
+				                      };
+			broadcast.SaveAsync(GetConnection());
+			Payload payload = broadcast.Payload();
+			payload.SaveAsync(this);
 		}
 
-		public void SendBroadcast(string fromAddress, string subject, string message, int encodingType = 2)
+		public void SendBroadcast(string fromAddress, string subject, string body, int encodingType = 2)
 		{
 			PrivateKey fromPrivateKey = PrivateKey.GetPrivateKey(GetConnection(), fromAddress);
-			if (fromPrivateKey != null)
-				SendBroadcast(fromPrivateKey, subject, message, encodingType);
-			else
-				throw new Exception("Don't find private key");
+			//if (fromPrivateKey != null)
+			SendBroadcast(fromPrivateKey, subject, body, encodingType);
+			//else
+			//	throw new Exception("Don't find private key");
 		}
 
 		#endregion see https://bitmessage.org/wiki/API_Reference

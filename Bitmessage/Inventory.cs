@@ -33,33 +33,14 @@ namespace bitmessage
 			return false;
 		}
 
-		//public void Save(Inv inv)
-		//{
-		//	if(inv.Hash.Length!=32) throw new Exception("inv.Hash.Length!=32");
-		//	lock (_items)
-		//	{
-		//		if (Get(inv.Hash) == null)
-		//		{
-		//			_items.Add(inv);
-		//			inv.SaveAsync(_bitmessage.GetConnection());
-		//		}
-		//		else
-		//		{
-		//			inv.SaveAsync(_bitmessage.GetConnection());
-		//		}
-		//	}
-		//}
-
 		internal void Insert(MsgType msgType, Payload payload)
 		{
 			if (!Exists(payload.Hash))
-			{
 				if (msgType == MsgType.Broadcast)
 				{
 					_items.Add(payload);
-					payload.SaveAsync(_bitmessage.GetConnection());
+					payload.SaveAsync(_bitmessage);
 				}
-			}
 		}
 	}
 }

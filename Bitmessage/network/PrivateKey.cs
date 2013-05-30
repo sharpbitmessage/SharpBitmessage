@@ -1,18 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+
 using System.Security.Cryptography;
-using OpenSSL.Core;
 using SQLite;
 using bitmessage.Crypto;
+using System.Linq;
 
 namespace bitmessage.network
 {
 	public class PrivateKey : Pubkey
 	{
-		private readonly string _privSigningKeyWif;
-		private readonly string _privEncryptionKeyWif;
+		public string PrivSigningKeyWif { get; set; }
+		public string PrivEncryptionKeyWif { get; set; }
 
 		public PrivateKey(string label, bool eighteenByteRipe = false)
 		{
@@ -23,7 +23,7 @@ namespace bitmessage.network
 
 			byte[] potentialPrivSigningKey = new byte[32];
 			rnd.GetBytes(potentialPrivSigningKey);
-			byte[] potentialPubSigningKey = pointMult(potentialPrivSigningKey);
+			SigningKey = ECDSA.PointMult(potentialPrivSigningKey);
 
 			int numberOfAddressesWeHadToMakeBeforeWeFoundOneWithTheCorrectRipePrefix = 0;
 
@@ -34,10 +34,10 @@ namespace bitmessage.network
 			{
 				numberOfAddressesWeHadToMakeBeforeWeFoundOneWithTheCorrectRipePrefix += 1;
 				rnd.GetBytes(potentialPrivEncryptionKey);
-				
-				byte[] potentialPubEncryptionKey = pointMult(potentialPrivEncryptionKey);
 
-				byte[] buff = potentialPubSigningKey.Concatenate(potentialPubEncryptionKey);
+				EncryptionKey = ECDSA.PointMult(potentialPrivEncryptionKey);
+
+				byte[] buff = SigningKey.Concatenate(EncryptionKey);
 				byte[] sha = new SHA512Managed().ComputeHash(buff);
 				ripemd160 = RIPEMD160.Create().ComputeHash(sha);
 
@@ -57,12 +57,11 @@ namespace bitmessage.network
 			                " addresses at " +
 			                numberOfAddressesWeHadToMakeBeforeWeFoundOneWithTheCorrectRipePrefix/(DateTime.Now - startTime).TotalSeconds +
 			                " addresses per second before finding one with the correct ripe-prefix.");
-			Name = Base58.EncodeAddress(3, 1, ripemd160);
 
 			// NonceTrialsPerByte используется значение по умолчанию
 			// payloadLengthExtraBytes используется значение по умолчанию
-			_privSigningKeyWif = PrivateKey2Wif(potentialPrivSigningKey);
-			_privEncryptionKeyWif = PrivateKey2Wif(potentialPrivEncryptionKey);
+			PrivSigningKeyWif = PrivateKey2Wif(potentialPrivSigningKey);
+			PrivEncryptionKeyWif = PrivateKey2Wif(potentialPrivEncryptionKey);
 			
 			Status = Status.Valid;
 		}
@@ -80,35 +79,39 @@ namespace bitmessage.network
 			return privKeyAnd80.Concatenate(checksum).ByteArrayToBase58();
 		}
 
-		const int Secp256K1 = 714;
-		private byte[] pointMult(byte[] secret)
+		/// <summary>
+		/// if input         5Kek19qnxAqFsLXKToVMWcbpQryxzwaqtHLnQ9WwrZR8yC8aBck
+		/// then hex result  f1b868e74dd6dd9d13a6bce594e62baf71fa367fc7747bdf019380adde153253
+		/// </summary>
+		/// <param name="wif"></param>
+		/// <returns></returns>
+		private static byte[] Wif2PrivateKey(string wif)
 		{
-			var k = Native.EC_KEY_new_by_curve_name(Secp256K1);
-			var privKey = Native.BN_bin2bn(secret, 32, IntPtr.Zero);
-			var group = Native.EC_KEY_get0_group(k);
-			var pubKey = Native.EC_POINT_new(group);
+			byte[] bytes = Base58.Base58ToByteArray(wif);
+			Byte[] privKeyAnd80 = new byte[bytes.Length - 4];
+			Buffer.BlockCopy(bytes, 0, privKeyAnd80, 0, privKeyAnd80.Length);
 
-			Native.EC_POINT_mul(group, pubKey, privKey, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-			Native.EC_KEY_set_private_key(k, privKey);
-			Native.EC_KEY_set_public_key(k, pubKey);
+			byte[] hash = new byte[4];
+			using (var sha256 = new SHA256Managed())
+				Buffer.BlockCopy( 
+					sha256.ComputeHash(sha256.ComputeHash(privKeyAnd80)), 0, 
+					hash, 0, 4);
 
-			//Pass *out as null for required buffer length.
-			int reqLen = Native.i2o_ECPublicKey(k, 0);
+			byte[] checkSum = new byte[4];
+			Buffer.BlockCopy(bytes, privKeyAnd80.Length, checkSum, 0, 4);
 
-			Byte[] outBuf = new Byte[reqLen];
-			IntPtr unmanagedOut = Marshal.AllocCoTaskMem(outBuf.Length);
-			int res = Native.i2o_ECPublicKey(k, ref unmanagedOut);
-			if (res == reqLen)
+			if (checkSum.SequenceEqual(hash) && (privKeyAnd80[0] == 0x80))
 			{
-				unmanagedOut -= res;
-				Marshal.Copy(unmanagedOut, outBuf, 0, outBuf.Length);
+				byte[] result = new byte[privKeyAnd80.Length - 1];
+				Buffer.BlockCopy(privKeyAnd80, 1, result, 0, result.Length);
+				return result;
 			}
-			Marshal.FreeCoTaskMem(unmanagedOut);
+			return null;
+		}
 
-			Native.EC_POINT_free(pubKey);
-			Native.BN_free(privKey);
-			Native.EC_KEY_free(k);
-			return outBuf; ;
+		public byte[] Sign(byte[] data)
+		{
+			return ECDSA.ECDSASign(data, Wif2PrivateKey(PrivSigningKeyWif));
 		}
 
 		#region for DB

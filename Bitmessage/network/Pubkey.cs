@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Security.Cryptography;
 using SQLite;
 using bitmessage.Crypto;
@@ -17,12 +18,28 @@ namespace bitmessage.network
 		public Status Status { get; set; }
 
 		public string Label { get; set; }
+
+		[Ignore]
 		public UInt64 Version { get; set; }
+		public string Version4DB
+		{
+			get { return Version.ToString(CultureInfo.InvariantCulture); }
+			set { Version = UInt64.Parse(value); }
+		}
+
+		[Ignore]
 		public UInt64 Stream { get; set; }
+		public string Stream4DB
+		{
+			get { return Stream.ToString(CultureInfo.InvariantCulture); }
+			set { Stream = UInt64.Parse(value); }
+		}
+
 		public UInt32 BehaviorBitfield { get; set; }
 		public byte[] SigningKey { get; set; }
 		public byte[] EncryptionKey { get; set; }
 
+		[Ignore]
 		public UInt64 NonceTrialsPerByte
 		{
 			get
@@ -33,7 +50,13 @@ namespace bitmessage.network
 			}
 			set { _nonceTrialsPerByte = value; }
 		}
+		public string NonceTrialsPerByte4DB
+		{
+			get { return NonceTrialsPerByte.ToString(CultureInfo.InvariantCulture); }
+			set { NonceTrialsPerByte = UInt64.Parse(value); }
+		}
 
+		[Ignore]
 		public UInt64 ExtraBytes
 		{
 			get
@@ -43,6 +66,11 @@ namespace bitmessage.network
 						   : _extraBytes;
 			}
 			set { _extraBytes = value; }
+		}
+		public string ExtraBytes4DB
+		{
+			get { return ExtraBytes.ToString(CultureInfo.InvariantCulture); }
+			set { ExtraBytes = UInt64.Parse(value); }
 		}
 
 		public Pubkey(Payload payload)
@@ -70,6 +98,21 @@ namespace bitmessage.network
 			// TODO CheckSing
 		}
 
+		public Pubkey(
+					UInt64 addressVersion,
+					UInt64 streamNumber,
+					UInt32 behaviorBitfield,
+					byte[] publicSigningKey,
+					byte[] publicEncryptionKey
+					)
+		{
+			Version = addressVersion;
+			Stream = streamNumber;
+			BehaviorBitfield = behaviorBitfield;
+			SigningKey = publicSigningKey;
+			EncryptionKey = publicEncryptionKey;
+		}
+
 		[PrimaryKey]
 		public string Name
 		{
@@ -77,13 +120,8 @@ namespace bitmessage.network
 			{
 				if (Status != Status.Valid)
 					return "Invalid";
-				if (string.IsNullOrEmpty(_name))
-				{
-					byte[] buff = SigningKey.Concatenate(EncryptionKey);
-					byte[] sha = new SHA512Managed().ComputeHash(buff);
-					byte[] ripemd160 = RIPEMD160.Create().ComputeHash(sha);
-					_name = Base58.EncodeAddress(Version, Stream, ripemd160);
-				}
+				if (String.IsNullOrEmpty(_name))
+					_name = EncodeAddress(Version, Stream, Hash);
 				return _name;
 			}
 			protected set { _name = value; }
@@ -110,5 +148,38 @@ namespace bitmessage.network
 		public virtual void SaveAsync(SQLiteAsyncConnection db) { db.InsertAsync(this); }
 
 		#endregion for DB
+		
+		[Ignore]
+		public byte[] Hash
+		{
+			get
+			{
+				byte[] buff = SigningKey.Concatenate(EncryptionKey);
+				byte[] sha = new SHA512Managed().ComputeHash(buff);
+				return RIPEMD160.Create().ComputeHash(sha);
+			}
+		}
+
+		private static string EncodeAddress(UInt64 version, UInt64 stream, byte[] ripe)
+		{
+			byte[] v = version.VarIntToBytes();
+			byte[] s = stream.VarIntToBytes();
+
+			int repeOffset = 0;
+
+			if (version >= 2)
+				if ((ripe[0] == 0) && (ripe[1] == 0))
+					repeOffset = 2;
+				else if (ripe[0] == 0)
+					repeOffset = 1;
+
+			byte[] buff = new byte[v.Length + s.Length + ripe.Length - repeOffset];
+			Buffer.BlockCopy(v, 0, buff, 0, v.Length);
+			Buffer.BlockCopy(s, 0, buff, v.Length, s.Length);
+			Buffer.BlockCopy(ripe, repeOffset, buff, v.Length + s.Length, ripe.Length - repeOffset);
+
+			string result = "BM-" + Base58.ByteArrayToBase58Check(buff);
+			return result;
+		}
 	}
 }
