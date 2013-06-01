@@ -23,29 +23,29 @@ namespace bitmessage
 
 			int pos = payload.FirstByteAfterTime;
 
-			Version = payload.Data.ReadVarInt(ref pos);
+			Version = payload.SentData.ReadVarInt(ref pos);
 			if (Version != 1) return;
 
 			Key = new Pubkey(
-				payload.Data.ReadVarInt(ref pos),
-				payload.Data.ReadVarInt(ref pos),
-				payload.Data.ReadUInt32(ref pos),
-				((byte) 4).Concatenate(payload.Data.ReadBytes(ref pos, 64)),
-				((byte) 4).Concatenate(payload.Data.ReadBytes(ref pos, 64))
+				payload.SentData.ReadVarInt(ref pos),
+				payload.SentData.ReadVarInt(ref pos),
+				payload.SentData.ReadUInt32(ref pos),
+				((byte) 4).Concatenate(payload.SentData.ReadBytes(ref pos, 64)),
+				((byte) 4).Concatenate(payload.SentData.ReadBytes(ref pos, 64))
 				);
 
-			if (!Key.Hash.SequenceEqual(payload.Data.ReadBytes(ref pos, 20)))
-				throw new Exception("Key.Hash varification error");
+			if (!Key.Hash.SequenceEqual(payload.SentData.ReadBytes(ref pos, 20)))
+				throw new Exception("Key.InventoryVector varification error");
 
-			EncodingType = (EncodingType) payload.Data.ReadVarInt(ref pos);
-			payload.Data.ReadVarStrSubjectAndBody(ref pos, out _subject, out _body);
+			EncodingType = (EncodingType) payload.SentData.ReadVarInt(ref pos);
+			payload.SentData.ReadVarStrSubjectAndBody(ref pos, out _subject, out _body);
 
 			int posOfEndMsg = pos;
-			UInt64 signatureLength = payload.Data.ReadVarInt(ref pos);
-			Signature = payload.Data.ReadBytes(ref pos, (int) signatureLength);
+			UInt64 signatureLength = payload.SentData.ReadVarInt(ref pos);
+			Signature = payload.SentData.ReadBytes(ref pos, (int) signatureLength);
 
 			byte[] data = new byte[posOfEndMsg - 12];
-			Buffer.BlockCopy(payload.Data, 12, data, 0, posOfEndMsg - 12);
+			Buffer.BlockCopy(payload.SentData, 12, data, 0, posOfEndMsg - 12);
 			if (data.ECDSAVerify(Key.SigningKey, Signature))
 				Status = Status.Valid;
 			Status = Status.Valid; // TODO Bug in PyBitmessage  !!!

@@ -6,7 +6,7 @@ using SQLite;
 namespace bitmessage.network
 {
 	[Table("inventory")]
-	public class Payload
+	public class Payload : ICanBeSent, IComparable 
 	{
 		private const int AverageProofOfWorkNonceTrialsPerByte = 320;
 		private const int PayloadLengthExtraBytes = 14000;
@@ -15,7 +15,7 @@ namespace bitmessage.network
 
 		private byte[] _hash;
 		private MsgType _msgType;
-		private string _msgTypeString;
+		private string _сommand;
 		private DateTime _receivedTime = DateTime.UtcNow;
 		private int _streamNumber = 1;
 
@@ -23,7 +23,7 @@ namespace bitmessage.network
 
 		[PrimaryKey]
 		
-		public byte[] Hash
+		public byte[] InventoryVector
 		{
 			get
 			{
@@ -31,22 +31,22 @@ namespace bitmessage.network
 				{
 					_hash = new byte[32];
 					using (var sha512 = new SHA512Managed())
-						Buffer.BlockCopy(sha512.ComputeHash( sha512.ComputeHash(Data) ), 0, _hash, 0, 32);
+						Buffer.BlockCopy(sha512.ComputeHash( sha512.ComputeHash(SentData) ), 0, _hash, 0, 32);
 				}
 				return _hash;
 			}
 			set { _hash = value; }
 		}
 
-		public byte[] Data { get; set; }
+		public byte[] SentData { get; set; }
 
-		public string MsgTypeString
+		public string Сommand
 		{
-			get { return _msgTypeString; }
+			get { return _сommand; }
 			set
 			{
-				_msgTypeString = value;
-				if (!Enum.TryParse(_msgTypeString, true, out _msgType))
+				_сommand = value;
+				if (!Enum.TryParse(_сommand, true, out _msgType))
 					_msgType = MsgType.NotKnown;
 			}
 		}
@@ -77,13 +77,13 @@ namespace bitmessage.network
 		public MsgType MsgType
 		{
 			get { return _msgType; }
-			set { _msgType = value; throw new NotImplementedException(); } // need change _msgTypeString
+			set { _msgType = value; throw new NotImplementedException(); } // need change _сommand
 		}
 		
 		public Payload(string msgType, byte[] data)
 		{
-			Data = data;
-			MsgTypeString = msgType;
+			SentData = data;
+			Сommand = msgType;
 		}
 
 		[Ignore]
@@ -92,7 +92,7 @@ namespace bitmessage.network
 			get
 			{
 				int pos = 8;
-				UInt32 embeddedTime32 = Data.ReadUInt32(ref pos);
+				UInt32 embeddedTime32 = SentData.ReadUInt32(ref pos);
 				if (embeddedTime32 == 0)
 					return 16;
 				return 12;
@@ -105,12 +105,12 @@ namespace bitmessage.network
 			get
 			{
 				int pos = 8;
-				UInt32 embeddedTime32 = Data.ReadUInt32(ref pos);
+				UInt32 embeddedTime32 = SentData.ReadUInt32(ref pos);
 
 				if (embeddedTime32==0)
 				{
 					pos = 8;
-					UInt64 embeddedTime64 = Data.ReadUInt64(ref pos);
+					UInt64 embeddedTime64 = SentData.ReadUInt64(ref pos);
 					return embeddedTime64;
 				}
 				return embeddedTime32;
@@ -122,12 +122,12 @@ namespace bitmessage.network
 			get
 			{
 				using (var sha512 = new SHA512Managed())
-					return sha512.ComputeHash(Data);
+					return sha512.ComputeHash(SentData);
 			}
 		}
 
 		[Ignore]
-		public int Length { get { return Data.Length; } }
+		public int Length { get { return SentData.Length; } }
 
 		[Ignore]
 		public bool IsEmbeddedTimeValid
@@ -197,10 +197,10 @@ namespace bitmessage.network
 				using (var sha512 = new SHA512Managed())
 				{
 					byte[] buff = new byte[8 + 512 / 8];
-					Buffer.BlockCopy(Data, 0, buff, 0, 8);
+					Buffer.BlockCopy(SentData, 0, buff, 0, 8);
 
 					pos = 8;
-					byte[] initialHash = sha512.ComputeHash(Data.ReadBytes(ref pos, Data.Length - pos));
+					byte[] initialHash = sha512.ComputeHash(SentData.ReadBytes(ref pos, SentData.Length - pos));
 					Buffer.BlockCopy(initialHash, 0, buff, 8, initialHash.Length);
 					resultHash = sha512.ComputeHash(sha512.ComputeHash(buff));
 				}
@@ -210,9 +210,9 @@ namespace bitmessage.network
 
 				UInt64 target =
 					(UInt64)
-					((decimal)Math.Pow(2, 64) / ((Data.Length + PayloadLengthExtraBytes) * AverageProofOfWorkNonceTrialsPerByte));
+					((decimal)Math.Pow(2, 64) / ((SentData.Length + PayloadLengthExtraBytes) * AverageProofOfWorkNonceTrialsPerByte));
 
-				Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + Data.Length);
+				Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + SentData.Length);
 
 				if (pow < target) return true;
 				return false;
@@ -255,5 +255,31 @@ namespace bitmessage.network
 		}
 
 		public delegate void EventHandler(Payload payload);
+
+		#region IComparable
+
+		public int CompareTo(object obj)
+		{
+			if (obj == null) return 1;
+			Payload otherPayload = obj as Payload;
+			if (otherPayload == null)
+				throw new ArgumentException("Object is not a Payload");
+			byte[] otherHash = otherPayload.InventoryVector;
+			byte[] myHash = InventoryVector;
+			for (int i = 0; i < 32; i++)
+			{
+				int compare = myHash[i].CompareTo(otherHash[i]);
+				if (compare != 0) return compare;
+			}
+			return 0;
+		}
+
+		#endregion IComparable
+
+
+		internal static Payload Find(byte[] hash)
+		{
+			throw new NotImplementedException();
+		}
 	}
 }

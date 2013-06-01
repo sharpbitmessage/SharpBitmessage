@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading;
 using bitmessage;
-using bitmessage.Crypto;
 using bitmessage.network;
 
 namespace test
@@ -20,7 +19,7 @@ namespace test
 			PrivateKey pk = new PrivateKey("my");
 			pk.SaveAsync(bm.GetConnection());
 			Thread.Sleep(1000);
-			bm.SendBroadcast(pk.Name, "PyBitmessage Client Vulnerability", "Vulnerability allows to send messages to other people's addresses");
+			//bm.SendBroadcast(pk.Name, "PyBitmessage Client Vulnerability", "Vulnerability allows to send messages to other people's addresses");
 
 			#endregion 
 
@@ -28,7 +27,7 @@ namespace test
 			//bm.ReceiveInvalidBroadcast += NewBroadcast;
 			//bm.ReceivePubkey += NewPubkey;
 			//bm.ReceiveInvalidPubkey += NewPubkey;
-			//Console.ReadLine();
+			Console.ReadLine();
 			//Console.WriteLine(bm.ToString());
 		}
 

@@ -15,7 +15,7 @@ namespace bitmessage
     {
 		private TcpListener _listener;
 		private readonly List<Client> _clients = new List<Client>(8);
-	    internal Inventory Inventory;
+		internal MemoryInventory MemoryInventory;
 
 		private readonly Thread _listenerLoopThread;
 		private readonly Thread _clientsControlThread;
@@ -52,7 +52,7 @@ namespace bitmessage
 				//db.InsertAsync(new Node("60.242.109.18", 443)).Wait();
 			}
 
-			Inventory = new Inventory(this);
+			MemoryInventory = new MemoryInventory();
 
 			_listener = new TcpListener(IPAddress.Any, _port);
 			try

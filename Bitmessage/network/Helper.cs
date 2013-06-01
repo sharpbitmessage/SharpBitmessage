@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -180,12 +179,6 @@ namespace bitmessage.network
 			}
 		}
 
-		private static void WriteHeaderMagic(this BinaryWriter bw)
-		{
-			Debug.WriteLine("WriteHeaderMagic");
-			bw.Write(BitConverter.GetBytes(0xE9BEB4D9).ReverseIfNeed());
-		}
-
 		private static string ReadHeaderCommand(this BinaryReader br)
 		{
 			Debug.Write("ReadHeaderCommand - ");
@@ -212,15 +205,6 @@ namespace bitmessage.network
 			return result.ToString();
 		}
 
-		private static void WriteHeaderCommand(this BinaryWriter bw, String command)
-		{
-			if (command.Length > 12) throw new ArgumentOutOfRangeException("command", "command.Length>12 command=" + command);
-			byte[] bytes = Encoding.ASCII.GetBytes(command);
-			bw.Write(bytes);
-			for (int i = bytes.Length; i < 12; ++i)
-				bw.Write((byte) 0);
-		}
-
 		public static Header ReadHeader(this BinaryReader br)
 		{
 			br.ReadHeaderMagic();
@@ -232,61 +216,25 @@ namespace bitmessage.network
 				       };
 		}
 
-		private static readonly byte[] _nullPayload = new byte[] {0, 0, 0, 0, 0xCF, 0x83, 0xE1, 0x35};
-
-		public static void WriteHeader(this BinaryWriter bw, String command, byte[] payload)
+		public static void Send(this BinaryWriter bw, ICanBeSent message)
 		{
-			bw.WriteHeaderMagic();
-			bw.WriteHeaderCommand(command);
-
-			if ((payload == null) || (payload.Length == 0))
+			try
 			{
-				Debug.WriteLine("WriteHeader " + command + " payload null or zero");
-				bw.Write(_nullPayload);
+				lock (bw)
+				{
+					bw.Write(message.Magic());
+					bw.Write(message.СommandBytes());
+					bw.Write(message.Length());
+					bw.Write(message.Checksum());
+					bw.Write(message.SentData);
+					bw.Flush();
+				}
 			}
-			else
+			catch
 			{
-				Debug.WriteLine("WriteHeader " + command + " payload.Length=" + payload.Length);
-
-				bw.Write(BitConverter.GetBytes((UInt32) payload.Length).ReverseIfNeed());
-
-				byte[] sha512 = new SHA512Managed().ComputeHash(payload);
-
-				for (int i = 0; i < 4; ++i)
-					bw.Write(sha512[i]);
-
-				bw.Write(payload);
 			}
 		}
 
 		#endregion Header
-
-		public static void SendVerack(this BinaryWriter bw)
-		{
-			bw.WriteHeader("verack", null);
-			bw.Flush();
-		}
-
-		public static void SendGetdata(this BinaryWriter bw, List<byte[]> list)
-		{
-			MemoryStream payloadBuff = new MemoryStream(9 + list.Count * 32);
-			BinaryWriter payload = new BinaryWriter(payloadBuff);
-			payload.Write(((ulong) list.Count).VarIntToBytes());
-			foreach(byte[] item in list)
-				payload.Write(item);
-
-			bw.WriteHeader("getdata", payloadBuff.GetBuffer());
-			bw.Flush();
-		}
-
-		public static IEnumerable<byte[]> ToInv(this byte[] br)
-		{
-			int pos = 0;
-			int brL = br.Length;
-			int count = (int)br.ReadVarInt(ref pos);
-			for (int i = 0; (i < count) && (brL > pos); ++i)
-				yield return br.ReadBytes(ref pos, 32);
-		}
-
 	}
 }

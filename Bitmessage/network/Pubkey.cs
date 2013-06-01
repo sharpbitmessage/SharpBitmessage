@@ -79,19 +79,19 @@ namespace bitmessage.network
 
 			int pos = payload.FirstByteAfterTime;
 
-			Version = payload.Data.ReadVarInt(ref pos);
+			Version = payload.SentData.ReadVarInt(ref pos);
 
 			if ((Version<=3))
 			{
-				Stream = payload.Data.ReadVarInt(ref pos);
-				BehaviorBitfield = payload.Data.ReadUInt32(ref pos);
-				SigningKey = ((byte) 4).Concatenate(payload.Data.ReadBytes(ref pos, 64));
-				EncryptionKey = ((byte) 4).Concatenate(payload.Data.ReadBytes(ref pos, 64));
+				Stream = payload.SentData.ReadVarInt(ref pos);
+				BehaviorBitfield = payload.SentData.ReadUInt32(ref pos);
+				SigningKey = ((byte) 4).Concatenate(payload.SentData.ReadBytes(ref pos, 64));
+				EncryptionKey = ((byte) 4).Concatenate(payload.SentData.ReadBytes(ref pos, 64));
 
 				if (Version==3)
 				{
-					NonceTrialsPerByte = payload.Data.ReadUInt64(ref pos);
-					ExtraBytes = payload.Data.ReadUInt64(ref pos);
+					NonceTrialsPerByte = payload.SentData.ReadUInt64(ref pos);
+					ExtraBytes = payload.SentData.ReadUInt64(ref pos);
 				}
 				Status = Status.Valid;
 			}
