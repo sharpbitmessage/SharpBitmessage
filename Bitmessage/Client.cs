@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -14,10 +15,14 @@ namespace bitmessage
 	{
 		private void debug(string msg)
 		{
-			Debug.WriteLine(Thread.CurrentThread.Name + " " + msg);
+			string prefix = string.IsNullOrEmpty(Thread.CurrentThread.Name)
+				                ? Thread.CurrentThread.ManagedThreadId.ToString(CultureInfo.InvariantCulture)
+				                : Thread.CurrentThread.Name;
+
+			Debug.WriteLine("Thread " + prefix + ": " + msg);
 		}
 
-		private readonly Bitmessage _bitmessage;
+		internal readonly Bitmessage _bitmessage;
 
 		private readonly TcpClient _tcpClient;
 		public readonly Node Node;
@@ -69,7 +74,7 @@ namespace bitmessage
 		{
 			if (_clientInventory.Exists(payload.InventoryVector)) return;
 			_clientInventory.Insert(payload.InventoryVector);
-			BinaryWriter.Send(new Inv(payload.InventoryVector));
+			Send(new Inv(payload.InventoryVector));
 		}
 
 		internal void Listen()
@@ -92,23 +97,48 @@ namespace bitmessage
 			NetworkStream ns = _tcpClient.GetStream();
 			while (ns.CanRead)
 			{
-				Header h = BinaryReader.ReadHeader();
-				Payload payload = new Payload(h.Command, BinaryReader.ReadBytes((int) h.Length));
+				#region Read header and payload from network
+
+				Header header;
+				Payload payload;
+				try
+				{
+					header = new Header(BinaryReader);
+					payload = new Payload(header.Command, BinaryReader.ReadBytes((int)header.Length));
+				}
+				catch (Exception e)
+				{
+					Debug.WriteLine("Похоже, что соединение потерено, извещаю об этом поток _bitmessage " + e);
+					_bitmessage.MaybeDisconnect.Set();
+					break;
+				}
+
+				#endregion Read header and payload from network
 
 				byte[] sha512 = payload.Sha512;
 
 				bool checksum = true;
 
 				for (int i = 0; i < 4; ++i)
-					checksum = checksum && (sha512[i] == h.Checksum[i]);
+					checksum = checksum && (sha512[i] == header.Checksum[i]);
 
 				if (checksum && payload.IsValid)
 				{
-					debug("Command=" + h.Command);
+					debug("Command=" + header.Command);
+
+					#region Save payload to Inventory
+
+					if ((header.Command == "msg") || (header.Command == "pubkey") || (header.Command == "broadcast") || (header.Command == "getpubkey"))
+					{
+						_clientInventory.Insert(payload.InventoryVector);
+						payload.SaveAsync(_bitmessage);
+					}
+
+					#endregion Save to Inventory
 
 					#region VERSION
 
-					if (h.Command == "version")
+					if (header.Command == "version")
 					{
 						Version v = new Version(payload);
 						debug("Подключились с " + v.UserAgent);
@@ -117,70 +147,85 @@ namespace bitmessage
 						else if (v.Nonce == Version.EightBytesOfRandomDataUsedToDetectConnectionsToSelf)
 							Stop("DetectConnectionsToSelf");
 						else
-							BinaryWriter.Send(new Verack());
+							Send(new Verack());
 					}
 
-						#endregion VERSION
+					#endregion VERSION
 
-						#region INV
+					#region INV
 
-					else if (h.Command == "inv")
+					else if (header.Command == "inv")
 					{
-						debug("Load inv");
-						List<byte[]> buff = new List<byte[]>(payload.Length/32);
+						Inv inputInventory = new Inv(payload.SentData);
+						MemoryInventory buff4GetData = new MemoryInventory(inputInventory.Count);
 
-						Inv inv = new Inv(payload.SentData);
+						debug("прислали inv. Inventory.Count=" + inputInventory.Count);
 
-						foreach (byte[] bytes in inv.Inventory)
-							if (!_bitmessage.MemoryInventory.Exists(bytes))
-								if (!_clientInventory.Exists(bytes))
-								{
-									_clientInventory.Insert(bytes);
-									buff.Add(bytes);
-								}
-
-						if (buff.Count > 0)
+						foreach (byte[] inventoryVector in inputInventory)
 						{
-							debug("SendGetdata count=" + buff.Count);
-							BinaryWriter.Send(new GetData(buff));							
+							_clientInventory.Insert(inventoryVector);
+							if (!_bitmessage.MemoryInventory.Exists(inventoryVector))
+								buff4GetData.Insert(inventoryVector);
 						}
+
+						if (buff4GetData.Count > 0)
+						{
+							debug("SendGetdata count=" + buff4GetData.Count);
+							Send(new GetData(buff4GetData));
+						}
+						else
+							debug("Всё знаю, не отправляю GetData");
 					}
 
-						#endregion
+					#endregion
 
-						// *************  PUBKEY   *******************
+					#region verack
 
-					else if (h.Command == "getpubkey")
+					else if (header.Command == "verack")
+					{
+						Send(new Inv(_bitmessage.MemoryInventory));
+					}
+
+					#endregion
+
+					#region getpubkey
+
+					else if (header.Command == "getpubkey")
 					{
 					}
 
-					else if (h.Command == "pubkey")
-					{
-						payload.SaveAsync(_bitmessage);
-						_bitmessage.MemoryInventory.Insert(payload.InventoryVector);
+					#endregion getpubkey
 
+					#region pubkey
+
+					else if (header.Command == "pubkey")
+					{
 						Pubkey pubkey = new Pubkey(payload);
 
 						if (pubkey.Status == Status.Valid)
+						{
+							pubkey.SaveAsync(_bitmessage.DB);
 							_bitmessage.OnReceivePubkey(pubkey);
+						}
 						else
 							_bitmessage.OnReceiveInvalidPubkey(pubkey);
 					}
 
-						// *************  MSG   *******************
+					#endregion PUBKEY
 
-					else if (h.Command == "msg")
+					#region msg
+
+					else if (header.Command == "msg")
 					{
 					}
 
-						// *************  BROADCAST   *******************
+					#endregion MSG
 
-					else if (h.Command == "broadcast")
+					#region broadcast
+
+					else if (header.Command == "broadcast")
 					{
-						payload.SaveAsync(_bitmessage);
-						_bitmessage.MemoryInventory.Insert(payload.InventoryVector);
-
-						Broadcast broadcast = new Broadcast(payload);
+						Broadcast broadcast = new Broadcast(_bitmessage, payload);
 
 						if (broadcast.Status == Status.Valid)
 							_bitmessage.OnReceiveBroadcast(broadcast);
@@ -188,13 +233,17 @@ namespace bitmessage
 							_bitmessage.OnReceiveInvalidBroadcast(broadcast);
 					}
 
-					else if (h.Command == "addr")
+					#endregion BROADCAST
+
+					#region addr
+
+					else if (header.Command == "addr")
 					{
 						int pos = 0;
 						UInt64 numberOfAddressesIncluded = payload.SentData.ReadVarInt(ref pos);
 						if ((numberOfAddressesIncluded > 0) && (numberOfAddressesIncluded < 1001))
 						{
-							if (payload.Length != (pos + (34*(int) numberOfAddressesIncluded)))
+							if (payload.Length != (pos + (34 * (int)numberOfAddressesIncluded)))
 								throw new Exception("addr message does not contain the correct amount of data. Ignoring.");
 
 							//bool needToWriteKnownNodesToDisk = false;
@@ -205,28 +254,50 @@ namespace bitmessage
 							//}
 						}
 					}
-					else if (h.Command == "getdata")
+
+					#endregion addr
+
+					#region getdata
+
+					else if (header.Command == "getdata")
 					{
 						debug("Load getdata");
 						var getData = new GetData(payload.SentData);
 
 						foreach (byte[] hash in getData.Inventory)
-							try
-							{
-								Payload payload4Send = Payload.Find(hash);
-								if (payload4Send != null)
-									BinaryWriter.Send(payload4Send);
-							}
-							catch (IOException)
-							{
-							} // игнорируем проблеммы с сетью. while (ns.CanRead) - завершит поток.
-
+							Payload.SendAsync(this, hash.ToHex(false));
 					}
-					else if (h.Command == "veract")
+
+					#endregion getdata
+
+					#region veract
+
+					else if (header.Command == "veract")
 					{
 						throw new NotImplementedException();
 						// отправить Inventory
 					}
+					#endregion veract
+
+					#region ping
+
+					else if (header.Command == "ping")
+					{
+						Send(new Pong());
+					}
+
+					#endregion ping
+
+					#region pong
+
+					else if (header.Command == "pong")
+					{
+
+					}
+
+					#endregion pong
+
+					else debug("unknown command");
 				}
 				else
 					debug("checksum error");
@@ -237,9 +308,31 @@ namespace bitmessage
 
 		public void Connect()
 		{
+			debug("Подключаюсь к " + Node);
 			_tcpClient.Connect(Node.Host, Node.Port);
-			BinaryWriter.Send(new Version());
+			Send(new Version());
 			Listen();
+		}
+
+		public void Send(ICanBeSent message)
+		{
+			try
+			{
+				if (BinaryWriter != null)
+					lock (BinaryWriter)
+					{
+						BinaryWriter.Write(message.Magic());
+						BinaryWriter.Write(message.СommandBytes());
+						BinaryWriter.Write(message.Length());
+						BinaryWriter.Write(message.Checksum());
+						if (message.SentData != null) BinaryWriter.Write(message.SentData);
+						BinaryWriter.Flush();
+					}
+			}
+			catch(Exception e)
+			{
+				Debug.WriteLine(e);
+			}
 		}
 	}
 }

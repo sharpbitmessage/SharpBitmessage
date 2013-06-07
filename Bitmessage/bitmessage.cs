@@ -20,28 +20,27 @@ namespace bitmessage
 		private readonly Thread _listenerLoopThread;
 		private readonly Thread _clientsControlThread;
 
-		private readonly string _baseName;
 		private readonly int _port;
-
-		public SQLiteAsyncConnection GetConnection()
-		{
-			return new SQLiteAsyncConnection(_baseName);
-		}
+		private readonly string _baseName;
+	    internal readonly SQLiteAsyncConnection DB;
 
 		public Bitmessage(string baseName = "bitmessage.sqlite", int port = 8444)
 		{
 			_baseName = baseName;
 			_port = port;
 
-			if (!File.Exists(baseName))
-			{
-				var db = GetConnection();
-				db.CreateTableAsync<Node>().Wait();
-				db.CreateTableAsync<Payload>().Wait();
-				db.CreateTableAsync<Pubkey>().Wait();
-				db.CreateTableAsync<PrivateKey>().Wait();
+			bool newDBFile = !File.Exists(baseName);
+			DB = new SQLiteAsyncConnection(_baseName);
 
-				db.InsertAsync(new Node("127.0.0.1", 8444)).Wait();
+			if (newDBFile)
+			{
+				DB.CreateTableAsync<Node>().Wait();
+				DB.CreateTableAsync<Payload>().Wait();
+				DB.CreateTableAsync<Pubkey>().Wait();
+				DB.CreateTableAsync<PrivateKey>().Wait();
+				DB.CreateTableAsync<Broadcast>().Wait();
+
+				DB.InsertAsync(new Node("127.0.0.1", 8444)).Wait();
 
 				//db.InsertAsync(new Node("80.69.173.220", 443)).Wait();
 				//db.InsertAsync(new Node("109.95.105.15", 8443)).Wait();
@@ -52,7 +51,7 @@ namespace bitmessage
 				//db.InsertAsync(new Node("60.242.109.18", 443)).Wait();
 			}
 
-			MemoryInventory = new MemoryInventory();
+			MemoryInventory = new MemoryInventory(DB);
 
 			_listener = new TcpListener(IPAddress.Any, _port);
 			try
@@ -133,8 +132,7 @@ namespace bitmessage
 				// Довожу количество подключенных клиентов до 8
 				if (_clients.Count<8)
 				{
-					var conn = GetConnection();
-					var task = conn.Table<Node>().OrderBy(x => x.NumberOfBadConnection).ToListAsync();
+					var task = DB.Table<Node>().OrderBy(x => x.NumberOfBadConnection).ToListAsync();
 					task.Wait();
 					var nodes = task.Result;
 					foreach (Node node in nodes)
@@ -162,11 +160,13 @@ namespace bitmessage
 					}
 				}
 				// Сплю минуту, или если уведомят из Helper.ReadHeaderMagic
-				Helper.MaybeDisconnect.WaitOne(60*1000);
+				MaybeDisconnect.WaitOne(60*1000);
 			}
 		}
 
-		public event Payload.EventHandler   NewPayload;
+	    public AutoResetEvent MaybeDisconnect = new AutoResetEvent(false);
+
+	    public event Payload.EventHandler   NewPayload;
 		public event Broadcast.EventHandler ReceiveBroadcast;
 		public event Broadcast.EventHandler ReceiveInvalidBroadcast;
 		public event Pubkey.EventHandler    ReceivePubkey;
@@ -204,15 +204,22 @@ namespace bitmessage
 
 	    #region see https://bitmessage.org/wiki/API_Reference
 
+		public PrivateKey GeneratePrivateKey(string label, bool eighteenByteRipe = false)
+		{
+			PrivateKey privateKey = new PrivateKey(label, eighteenByteRipe);
+			privateKey.SaveAsync(DB);
+			return privateKey;
+		}
+
 		public IEnumerable<PrivateKey> ListAddresses()
 		{
-			return PrivateKey.GetAll(GetConnection());
+			return PrivateKey.GetAll(DB);
 		}
 
 		public PrivateKey CreateRandomAddress(string label, bool eighteenByteRipe = false)
 		{
 			PrivateKey privateKey = new PrivateKey(label, eighteenByteRipe);
-			privateKey.SaveAsync(GetConnection());
+			privateKey.SaveAsync(DB);
 			return privateKey;
 		}
 
@@ -231,28 +238,18 @@ namespace bitmessage
 			throw new NotImplementedException();
 		}
 
-		public void SendBroadcast(PrivateKey fromAddress, string subject, string body, int encodingType = 2)
-		{
-			Broadcast broadcast = new Broadcast
-				                      {
-										  Key = fromAddress,
-										  Body = body,
-										  Subject = subject
-				                      };
-			broadcast.SaveAsync(GetConnection());
-			Payload payload = broadcast.Payload();
-			payload.SaveAsync(this);
-		}
-
 		public void SendBroadcast(string fromAddress, string subject, string body, int encodingType = 2)
 		{
-			PrivateKey fromPrivateKey = PrivateKey.GetPrivateKey(GetConnection(), fromAddress);
-			//if (fromPrivateKey != null)
-			SendBroadcast(fromPrivateKey, subject, body, encodingType);
-			//else
-			//	throw new Exception("Don't find private key");
+			Broadcast broadcast = new Broadcast(this)
+			{
+				Key = fromAddress,
+				Body = body,
+				Subject = subject
+			};
+			broadcast.SaveAsync(DB);
+			broadcast.Send();
 		}
 
 		#endregion see https://bitmessage.org/wiki/API_Reference
-	}
+    }
 }

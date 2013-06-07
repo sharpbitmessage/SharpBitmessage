@@ -23,6 +23,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading;
@@ -32,11 +33,14 @@ namespace SQLite
 {
 	public partial class SQLiteAsyncConnection
 	{
-		SQLiteConnectionString _connectionString;
+		readonly SQLiteConnectionString _connectionString;
 
-		public SQLiteAsyncConnection (string databasePath, bool storeDateTimeAsTicks = false)
+		private readonly int _maximumNumberOfAttemptsIfBusy;
+
+		public SQLiteAsyncConnection(string databasePath, int maximumNumberOfAttemptsIfBusy = 100, bool storeDateTimeAsTicks = false)
 		{
-			_connectionString = new SQLiteConnectionString (databasePath, storeDateTimeAsTicks);
+			_maximumNumberOfAttemptsIfBusy = maximumNumberOfAttemptsIfBusy;
+			_connectionString = new SQLiteConnectionString(databasePath, storeDateTimeAsTicks);
 		}
 
 		SQLiteConnectionWithLock GetConnection ()
@@ -110,14 +114,39 @@ namespace SQLite
 			});
 		}
 
-		public Task<int> InsertAsync (object item)
+		public Task<int> InsertAsync(object item)
 		{
-			return Task.Factory.StartNew (() => {
-				var conn = GetConnection ();
-				using (conn.Lock ()) {
-					return conn.Insert (item);
-				}
-			});
+			return Task.Factory.StartNew(() =>
+				                             {
+					                             var conn = GetConnection();
+					                             using (conn.Lock())
+					                             {
+						                             int result = 0;
+
+						                             int busy = 0;
+						                             do
+						                             {
+							                             try
+							                             {
+								                             result = conn.Insert(item);
+															 busy = _maximumNumberOfAttemptsIfBusy;
+							                             }
+							                             catch (SQLiteException e)
+							                             {
+															 if (busy >= _maximumNumberOfAttemptsIfBusy)
+																 throw;
+															 if ((e.Message == "Busy") || (e.Message == "database is locked"))
+															 {
+																 Thread.Sleep(10 * busy);
+																 busy++;
+															 }
+															 else
+																 throw;
+							                             }
+													 } while (busy < _maximumNumberOfAttemptsIfBusy);
+						                             return result;
+					                             }
+				                             });
 		}
 
 		public Task<int> UpdateAsync (object item)

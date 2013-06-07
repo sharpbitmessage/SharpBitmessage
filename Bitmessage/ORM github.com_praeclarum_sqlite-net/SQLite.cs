@@ -2201,6 +2201,7 @@ namespace SQLite
 				SQLite3.Reset (Statement);
 				throw SQLiteException.New (r, r.ToString ());
 			}
+
 		}
 
 		protected virtual Sqlite3Statement Prepare ()

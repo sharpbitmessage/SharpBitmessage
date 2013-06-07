@@ -14,13 +14,21 @@ namespace bitmessage.network
 		private string _name;
 		private ulong _nonceTrialsPerByte;
 		private ulong _extraBytes;
+		private ulong _version = 2;
+		private ulong _stream = 1;
 
 		public Status Status { get; set; }
 
 		public string Label { get; set; }
 
 		[Ignore]
-		public UInt64 Version { get; set; }
+		public UInt64 Version
+		{
+			get { return _version; }
+			set { _version = value; }
+		}
+
+		[MaxLength(20)]
 		public string Version4DB
 		{
 			get { return Version.ToString(CultureInfo.InvariantCulture); }
@@ -28,7 +36,13 @@ namespace bitmessage.network
 		}
 
 		[Ignore]
-		public UInt64 Stream { get; set; }
+		public UInt64 Stream
+		{
+			get { return _stream; }
+			set { _stream = value; }
+		}
+
+		[MaxLength(20)]
 		public string Stream4DB
 		{
 			get { return Stream.ToString(CultureInfo.InvariantCulture); }
@@ -50,6 +64,7 @@ namespace bitmessage.network
 			}
 			set { _nonceTrialsPerByte = value; }
 		}
+		[MaxLength(20)]
 		public string NonceTrialsPerByte4DB
 		{
 			get { return NonceTrialsPerByte.ToString(CultureInfo.InvariantCulture); }
@@ -67,6 +82,7 @@ namespace bitmessage.network
 			}
 			set { _extraBytes = value; }
 		}
+		[MaxLength(20)]
 		public string ExtraBytes4DB
 		{
 			get { return ExtraBytes.ToString(CultureInfo.InvariantCulture); }
@@ -121,7 +137,30 @@ namespace bitmessage.network
 				if (Status != Status.Valid)
 					return "Invalid";
 				if (String.IsNullOrEmpty(_name))
-					_name = EncodeAddress(Version, Stream, Hash);
+				{
+					byte[] v = Version.VarIntToBytes();
+					byte[] s = Stream.VarIntToBytes();
+
+					byte[] ripe = Hash;
+
+					int repeOffset = 0;
+					if (Version >= 2)
+					{
+						if (ripe.Length != 20)
+							throw new Exception("Programming error in encodeAddress: The length of a given ripe hash was not 20.");
+						if ((ripe[0] == 0) && (ripe[1] == 0))
+							repeOffset = 2;
+						else if (ripe[0] == 0)
+							repeOffset = 1;
+					}
+
+					byte[] buff = new byte[v.Length + s.Length + ripe.Length - repeOffset];
+					Buffer.BlockCopy(v,    0,          buff, 0,                   v.Length);
+					Buffer.BlockCopy(s,    0,          buff, v.Length,            s.Length);
+					Buffer.BlockCopy(ripe, repeOffset, buff, v.Length + s.Length, ripe.Length - repeOffset);
+
+					_name = "BM-" + buff.ByteArrayToBase58Check();
+				}
 				return _name;
 			}
 			protected set { _name = value; }
@@ -158,28 +197,6 @@ namespace bitmessage.network
 				byte[] sha = new SHA512Managed().ComputeHash(buff);
 				return RIPEMD160.Create().ComputeHash(sha);
 			}
-		}
-
-		private static string EncodeAddress(UInt64 version, UInt64 stream, byte[] ripe)
-		{
-			byte[] v = version.VarIntToBytes();
-			byte[] s = stream.VarIntToBytes();
-
-			int repeOffset = 0;
-
-			if (version >= 2)
-				if ((ripe[0] == 0) && (ripe[1] == 0))
-					repeOffset = 2;
-				else if (ripe[0] == 0)
-					repeOffset = 1;
-
-			byte[] buff = new byte[v.Length + s.Length + ripe.Length - repeOffset];
-			Buffer.BlockCopy(v, 0, buff, 0, v.Length);
-			Buffer.BlockCopy(s, 0, buff, v.Length, s.Length);
-			Buffer.BlockCopy(ripe, repeOffset, buff, v.Length + s.Length, ripe.Length - repeOffset);
-
-			string result = "BM-" + Base58.ByteArrayToBase58Check(buff);
-			return result;
 		}
 	}
 }

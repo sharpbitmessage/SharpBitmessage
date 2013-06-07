@@ -2,32 +2,57 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using SQLite;
 using bitmessage.network;
 
 namespace bitmessage
 {
-	internal class MemoryInventory : IEnumerable<byte[]>
+	public class MemoryInventory : IEnumerable<byte[]>
 	{
-		private readonly List<byte[]> _items = new List<byte[]>(3000);
+		private readonly List<byte[]> _items;
+
+		public MemoryInventory(int capacity = 3000)
+		{
+			_items = new List<byte[]>(capacity);
+		}
+
+		public MemoryInventory(SQLiteAsyncConnection conn)
+		{
+			Task<int> task = conn.Table<Payload>().CountAsync();
+			_items = new List<byte[]>(Math.Max(task.Result, 3000));
+
+			var inventory = conn.Table<Payload>().ToListAsync();
+
+			foreach (Payload payload in inventory.Result)
+				_items.Add(payload.InventoryVector);
+		}
+
 		public bool Exists(byte[] hash)
 		{
 			lock (_items)
 				return _items.Exists(bytes => bytes.SequenceEqual(hash));
 		}
 
-		public void Insert(byte[] hash)
+		public bool Insert(byte[] hash)
 		{
 			if (hash.Length != 32)
 				throw new ArgumentException("hash.Length!=32");
 			lock (_items)
 				if (!Exists(hash))
+				{
 					_items.Add(hash);
+					return true;
+				}
+			return false;
 		}
 
 		public int Count
 		{
 			get { return _items.Count; }
 		}
+
+		#region IEnumerator
 
 		public IEnumerator<byte[]> GetEnumerator()
 		{
@@ -38,44 +63,7 @@ namespace bitmessage
 		{
 			return GetEnumerator();
 		}
+
+		#endregion IEnumerator
 	}
-
-	//internal class Inventory
-	//{
-	//	private readonly Bitmessage _bitmessage;
-	//	public Inventory (Bitmessage bitmessage)
-	//	{
-	//		_bitmessage = bitmessage;
-	//	}
-
-	//	readonly List<Payload> _items = new List<Payload>(5000);
-	//	public bool Exists(byte[] item)
-	//	{
-	//		lock (_items)
-	//		{
-	//			if (_items.Count == 0)
-	//			{
-	//				var db = _bitmessage.GetConnection();
-	//				var task = db.Table<Payload>().ToListAsync();
-	//				task.Wait();
-	//				foreach (Payload payload in task.Result)
-	//					_items.Add(payload);					
-	//			}
-	//			foreach (Payload payload in _items)
-	//				if (payload.InventoryVector.SequenceEqual(item))
-	//					return true;
-	//		}
-	//		return false;
-	//	}
-
-	//	internal void Insert(MsgType msgType, Payload payload)
-	//	{
-	//		if (!Exists(payload.InventoryVector))
-	//			if (msgType == MsgType.Broadcast)
-	//			{
-	//				_items.Add(payload);
-	//				payload.SaveAsync(_bitmessage);
-	//			}
-	//	}
-	//}
 }

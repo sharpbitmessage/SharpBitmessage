@@ -37,8 +37,9 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AsyncTests.cs" />
-    <Compile Include="bitmessage.cs" />
+    <Compile Include="network\Pong.cs" />
+    <Compile Include="ORM github.com_praeclarum_sqlite-net\AsyncTests.cs" />
+    <Compile Include="Bitmessage.cs" />
     <Compile Include="Broadcast.cs" />
     <Compile Include="Client.cs" />
     <Compile Include="Crypto\Base58.cs" />

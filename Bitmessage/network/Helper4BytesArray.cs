@@ -26,24 +26,24 @@ namespace bitmessage.network
 			return inArray;
 		}
 
-		public static string ToHex(this byte[] ba)   
+		public static string ToHex(this byte[] ba, bool addPrefix = true)   
 		{
 			StringBuilder sb = new StringBuilder(2 + ba.Length*2);
-			sb.Append("0x");
+			if (addPrefix) sb.Append("0x");
 			foreach (byte b in ba)
 				sb.AppendFormat("{0:x2}", b);
 			return sb.ToString();
 		}
-
+		
 		public static byte[] HexToBytes(this string hexString)
 		{
 			if (hexString.Length % 2 != 0)
-			{
 				throw new ArgumentException(String.Format(CultureInfo.InvariantCulture, "The binary key cannot have an odd number of digits: {0}", hexString));
-			}
 
-			byte[] hexAsBytes = new byte[hexString.Length / 2];
-			for (int index = 0; index < hexAsBytes.Length; index++)
+			int startFrom = hexString.StartsWith("0x") ? 2 : 0;
+
+			byte[] hexAsBytes = new byte[(hexString.Length - startFrom)/2];
+			for (int index = startFrom; index < hexAsBytes.Length; index++)
 			{
 				string byteValue = hexString.Substring(index * 2, 2);
 				hexAsBytes[index] = byte.Parse(byteValue, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
@@ -100,8 +100,7 @@ namespace bitmessage.network
 
 		public static void Write(this MemoryStream ms, byte data)
 		{
-			byte[] tmp = BitConverter.GetBytes(data);
-			tmp.ReverseIfNeed();
+			byte[] tmp = new[] {data};
 			ms.Write(tmp, 0, tmp.Length);
 		}
 

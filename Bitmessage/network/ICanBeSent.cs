@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -7,7 +6,7 @@ namespace bitmessage.network
 {
 	public interface ICanBeSent
 	{		
-		string Сommand { get; }
+		string Command { get; }
 		byte[] SentData { get; }
 	}
 
@@ -23,8 +22,8 @@ namespace bitmessage.network
 
 		public static byte[] СommandBytes(this ICanBeSent message)
 		{
-			if (message.Сommand.Length > 12) throw new Exception("command.Length>12 command=" + message.Сommand);
-			byte[] ascii = Encoding.ASCII.GetBytes(message.Сommand);
+			if (message.Command.Length > 12) throw new Exception("command.Length>12 command=" + message.Command);
+			byte[] ascii = Encoding.ASCII.GetBytes(message.Command);
 			byte[] result = new byte[12];
 			Buffer.BlockCopy(ascii, 0, result, 0, ascii.Length);
 			return result;

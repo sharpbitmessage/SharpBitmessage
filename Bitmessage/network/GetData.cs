@@ -5,12 +5,16 @@ namespace bitmessage.network
 {
 	public class GetData : ICanBeSent
 	{
-		internal readonly MemoryInventory Inventory = new MemoryInventory();
+		internal readonly MemoryInventory Inventory;
 
-		public GetData(IEnumerable<byte[]> inventoryVectors)
+		//public GetData(IEnumerable<byte[]> inventoryVectors)
+		//{
+		//	foreach (byte[] inventoryVector in inventoryVectors)
+		//		Inventory.Insert(inventoryVector);
+		//}
+		public GetData(MemoryInventory inventory)
 		{
-			foreach (byte[] inventoryVector in inventoryVectors)
-				Inventory.Insert(inventoryVector);			
+			Inventory = inventory;
 		}
 
 		public GetData(byte[] payload)
@@ -18,11 +22,12 @@ namespace bitmessage.network
 			int pos = 0;
 			int brL = payload.Length;
 			int count = (int) payload.ReadVarInt(ref pos);
+			Inventory = new MemoryInventory(count);
 			for (int i = 0; (i < count) && (brL > pos); ++i)
 				Inventory.Insert(payload.ReadBytes(ref pos, 32));
 		}
 
-		public string Сommand
+		public string Command
 		{
 			get { return "getdata"; }
 		}

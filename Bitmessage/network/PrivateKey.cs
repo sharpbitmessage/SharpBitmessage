@@ -114,16 +114,15 @@ namespace bitmessage.network
 			return ECDSA.ECDSASign(data, Wif2PrivateKey(PrivSigningKeyWif));
 		}
 
-		#region for DB
-
-		public PrivateKey(){}
-
 		public static PrivateKey GetPrivateKey(SQLiteAsyncConnection conn, string name)
 		{
 			var task = conn.Table<PrivateKey>().Where(k => (k.Name == name)).FirstOrDefaultAsync();
-			task.Wait();
 			return task.Result;
 		}
+
+		#region for DB
+
+		public PrivateKey(){}
 
 		public new void SaveAsync(SQLiteAsyncConnection db)
 		{
@@ -133,14 +132,12 @@ namespace bitmessage.network
 		public static IEnumerable<PrivateKey> GetAll(SQLiteAsyncConnection conn)
 		{
 			var task = conn.Table<PrivateKey>().OrderBy(k => k.Name).ToListAsync();
-			task.Wait();
 			return task.Result;
 		}
 
 		public static PrivateKey FirstOrDefault(SQLiteAsyncConnection conn)
 		{
 			var task = conn.Table<PrivateKey>().FirstOrDefaultAsync();
-			task.Wait();
 			return task.Result;
 		}
 		

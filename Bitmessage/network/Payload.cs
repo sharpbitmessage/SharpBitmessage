@@ -1,7 +1,11 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 using SQLite;
+using System.Linq;
 
 namespace bitmessage.network
 {
@@ -17,12 +21,11 @@ namespace bitmessage.network
 		private MsgType _msgType;
 		private string _сommand;
 		private DateTime _receivedTime = DateTime.UtcNow;
-		private int _streamNumber = 1;
+		private ulong _stream = 1;
 
 		#region for DB
 
-		[PrimaryKey]
-		
+		[Ignore]
 		public byte[] InventoryVector
 		{
 			get
@@ -38,9 +41,18 @@ namespace bitmessage.network
 			set { _hash = value; }
 		}
 
+		[PrimaryKey]
+		[MaxLength(64)]
+		public string InventoryVectorHex
+		{
+			get { return InventoryVector.ToHex(false); }
+			set { InventoryVector = value.HexToBytes(); }
+		}
+
 		public byte[] SentData { get; set; }
 
-		public string Сommand
+		[MaxLength(30)]
+		public string Command
 		{
 			get { return _сommand; }
 			set
@@ -51,10 +63,17 @@ namespace bitmessage.network
 			}
 		}
 		
-		public int StreamNumber
+		[Ignore]
+		public UInt64 Stream
 		{
-			get { return _streamNumber; }
-			set { _streamNumber = value; }
+			get { return _stream; }
+			set { _stream = value; }
+		}
+		[MaxLength(20)]
+		public string Stream4DB
+		{
+			get { return Stream.ToString(CultureInfo.InvariantCulture); }
+			set { Stream = UInt64.Parse(value); }
 		}
 
 		public DateTime ReceivedTime
@@ -65,7 +84,18 @@ namespace bitmessage.network
 
 		public void SaveAsync(Bitmessage bm)
 		{
-			bm.GetConnection().InsertAsync(this);
+			if (SentData == null)
+				throw new Exception("Payload.SaveAsync SentData == null");
+			if (String.IsNullOrEmpty(Command) || (Command.Length > 30))
+				throw new Exception("Payload.SaveAsync Command incorrect =" + Command);
+			if (InventoryVector == null)
+				throw new Exception("Payload.SaveAsync InventoryVector==null");
+			if (InventoryVector.Length != 32)
+				throw new Exception("Payload.SaveAsync InventoryVector.Length != 32");
+
+			if(bm.MemoryInventory.Insert(InventoryVector))
+				bm.DB.InsertAsync(this);
+
 			bm.OnNewPayload(this);
 		}
 
@@ -83,7 +113,7 @@ namespace bitmessage.network
 		public Payload(string msgType, byte[] data)
 		{
 			SentData = data;
-			Сommand = msgType;
+			Command = msgType;
 		}
 
 		[Ignore]
@@ -221,6 +251,9 @@ namespace bitmessage.network
 
 		public static byte[] AddProofOfWork(byte[] data)
 		{
+			Debug.WriteLine("Start AddProofOfWork");
+			var startTime = DateTime.Now;
+
 			UInt64 target =
 				(UInt64)
 				((decimal) Math.Pow(2, 64)/((8 + data.Length + PayloadLengthExtraBytes)*AverageProofOfWorkNonceTrialsPerByte));
@@ -247,6 +280,8 @@ namespace bitmessage.network
 					trialValue = resultHash.ReadUInt64(ref pos);
 				}
 			}
+
+			Debug.WriteLine("Stop AddProofOfWork time="+(DateTime.Now-startTime).TotalMilliseconds+"ms");
 			
 			byte[] result = new byte[8 + data.Length];
 			Buffer.BlockCopy(initialHash, 0, result, 0, 8);
@@ -276,10 +311,26 @@ namespace bitmessage.network
 
 		#endregion IComparable
 
-
-		internal static Payload Find(byte[] hash)
+		public static Payload Get(SQLiteAsyncConnection conn, string inventoryVectorHex)
 		{
-			throw new NotImplementedException();
+			var query = conn.Table<Payload>().Where(inv => inv.InventoryVectorHex == inventoryVectorHex);
+			return query.FirstOrDefaultAsync().Result;
+		}
+
+		internal static void SendAsync(Client client, string inventoryVectorHex)
+		{
+			SQLiteAsyncConnection conn = client._bitmessage.DB;
+			var query = conn.Table<Payload>().Where(inv => inv.InventoryVectorHex == inventoryVectorHex);
+			query.FirstOrDefaultAsync().ContinueWith(t =>
+				                                         {
+					                                         if (t.Result != null)
+						                                         client.Send(t.Result);
+				                                         });
+		}
+
+		public override string ToString()
+		{
+			return "Payload " + Command + " InventoryVectorHex=" + InventoryVectorHex;
 		}
 	}
 }

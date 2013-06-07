@@ -81,13 +81,15 @@ namespace bitmessage.Crypto
 
 		public static string ByteArrayToBase58Check(this byte[] ba)
 		{
-			byte[] bb = new byte[ba.Length + 4];
-			Array.Copy(ba, bb, ba.Length);
+			byte[] baWithChecksum = new byte[ba.Length + 4];
+			Array.Copy(ba, baWithChecksum, ba.Length);
+
 			SHA512CryptoServiceProvider sha512 = new SHA512CryptoServiceProvider();
 			byte[] thehash = sha512.ComputeHash(ba);
-			thehash = sha512.ComputeHash(thehash);
-			for (int i = 0; i < 4; i++) bb[ba.Length + i] = thehash[i];
-			return ByteArrayToBase58(bb);
+			       thehash = sha512.ComputeHash(thehash);
+
+			for (int i = 0; i < 4; i++) baWithChecksum[ba.Length + i] = thehash[i];
+			return ByteArrayToBase58(baWithChecksum);
 		}
 	}
 }

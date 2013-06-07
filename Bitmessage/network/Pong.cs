@@ -1,10 +1,10 @@
 ﻿namespace bitmessage.network
 {
-	public class Verack : ICanBeSent
+	public class Pong : ICanBeSent
 	{
 		public string Command
 		{
-			get { return "verack"; }
+			get { return "pong"; }
 		}
 
 		public byte[] SentData
