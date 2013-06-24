@@ -37,18 +37,19 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Crypto\Cipher.cs" />
+    <Compile Include="network\GetPubkey.cs" />
     <Compile Include="network\Pong.cs" />
     <Compile Include="ORM github.com_praeclarum_sqlite-net\AsyncTests.cs" />
     <Compile Include="Bitmessage.cs" />
-    <Compile Include="Broadcast.cs" />
-    <Compile Include="Client.cs" />
+    <Compile Include="network\Broadcast.cs" />
+    <Compile Include="NodeConnection.cs" />
     <Compile Include="Crypto\Base58.cs" />
     <Compile Include="Crypto\ECDSA.cs" />
     <Compile Include="Crypto\OpenSSL\Native.cs" />
     <Compile Include="Crypto\OpenSSL\OpenSslException.cs" />
     <Compile Include="Crypto\OpenSSL\Version.cs" />
-    <Compile Include="Inventory.cs" />
-    <Compile Include="Message.cs" />
+    <Compile Include="MemoryInventory.cs" />
     <Compile Include="Enum.cs" />
     <Compile Include="network\GetData.cs" />
     <Compile Include="network\Header.cs" />
@@ -63,6 +64,7 @@
     <Compile Include="network\Verack.cs" />
     <Compile Include="network\Version.cs" />
     <Compile Include="network\Node.cs" />
+    <Compile Include="ProofOfWork.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ORM github.com_praeclarum_sqlite-net\SQLite.cs" />
     <Compile Include="ORM github.com_praeclarum_sqlite-net\SQLiteAsync.cs" />

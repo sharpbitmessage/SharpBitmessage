@@ -1590,6 +1590,10 @@ namespace OpenSSL.Core
 		#endregion
 
 		#region EVP_CIPHER
+
+		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+		public static extern IntPtr EVP_CIPHER_CTX_new();
+
 		[DllImport(DLLNAME, CallingConvention=CallingConvention.Cdecl)]
 		public extern static void EVP_CIPHER_CTX_init(IntPtr a);
 

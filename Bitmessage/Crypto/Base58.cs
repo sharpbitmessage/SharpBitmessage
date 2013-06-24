@@ -84,9 +84,9 @@ namespace bitmessage.Crypto
 			byte[] baWithChecksum = new byte[ba.Length + 4];
 			Array.Copy(ba, baWithChecksum, ba.Length);
 
-			SHA512CryptoServiceProvider sha512 = new SHA512CryptoServiceProvider();
-			byte[] thehash = sha512.ComputeHash(ba);
-			       thehash = sha512.ComputeHash(thehash);
+			byte[] thehash;
+			using (var sha512 = new SHA512CryptoServiceProvider())
+				thehash = sha512.ComputeHash( sha512.ComputeHash(ba) );
 
 			for (int i = 0; i < 4; i++) baWithChecksum[ba.Length + i] = thehash[i];
 			return ByteArrayToBase58(baWithChecksum);

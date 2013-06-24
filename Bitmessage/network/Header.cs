@@ -8,14 +8,18 @@ namespace bitmessage.network
 	public class Header
 	{
 		public readonly string Command;
-		public readonly UInt32 Length;
+		public readonly int Length;
 		public readonly byte[] Checksum;
 
 		public Header(BinaryReader br)
 		{
 			ReadHeaderMagic(br);
 			Command = ReadHeaderCommand(br);
-			Length = BitConverter.ToUInt32(br.ReadBytes(4).ReverseIfNeed(), 0);
+			UInt32 tmpLength = BitConverter.ToUInt32(br.ReadBytes(4).ReverseIfNeed(), 0);
+			if (tmpLength < int.MaxValue)
+				Length = (int) tmpLength;
+			else
+				throw new Exception("Header Length > int.MaxValue");
 			Checksum = br.ReadBytes(4);
 		}
 

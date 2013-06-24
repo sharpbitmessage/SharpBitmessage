@@ -12,10 +12,8 @@ namespace bitmessage.network
 	[Table("inventory")]
 	public class Payload : ICanBeSent, IComparable 
 	{
-		private const int AverageProofOfWorkNonceTrialsPerByte = 320;
-		private const int PayloadLengthExtraBytes = 14000;
-		private const int MaximumAgeOfAnObjectThatIAmWillingToAccept = 216000;
-		private const int LengthOfTimeToHoldOnToAllPubkeys = 2419200; //Equals 4 weeks. You could make this longer if you want but making it shorter would not be advisable because there is a very small possibility that it could keep you from obtaining a needed pubkey for a period of time.
+		public const int MaximumAgeOfAnObjectThatIAmWillingToAccept = 216000;
+		public const int LengthOfTimeToHoldOnToAllPubkeys = 2419200; //Equals 4 weeks. You could make this longer if you want but making it shorter would not be advisable because there is a very small possibility that it could keep you from obtaining a needed pubkey for a period of time.
 
 		private byte[] _hash;
 		private MsgType _msgType;
@@ -94,7 +92,7 @@ namespace bitmessage.network
 				throw new Exception("Payload.SaveAsync InventoryVector.Length != 32");
 
 			if(bm.MemoryInventory.Insert(InventoryVector))
-				bm.DB.InsertAsync(this);
+				bm.DB.InsertOrReplaceAsync(this);
 
 			bm.OnNewPayload(this);
 		}
@@ -147,14 +145,16 @@ namespace bitmessage.network
 			}
 		}
 
-		public byte[] Sha512
-		{
-			get
-			{
-				using (var sha512 = new SHA512Managed())
-					return sha512.ComputeHash(SentData);
-			}
-		}
+		//public byte[] Sha512   
+		//{
+		//	get
+		//	{
+		//		if (SentData==null)
+		//			return !
+		//		using (var sha512 = new SHA512Managed())
+		//			return sha512.ComputeHash(SentData);
+		//	}
+		//}
 
 		[Ignore]
 		public int Length { get { return SentData.Length; } }
@@ -237,56 +237,13 @@ namespace bitmessage.network
 
 				pos = 0;
 				UInt64 pow = resultHash.ReadUInt64(ref pos);
-
-				UInt64 target =
-					(UInt64)
-					((decimal)Math.Pow(2, 64) / ((SentData.Length + PayloadLengthExtraBytes) * AverageProofOfWorkNonceTrialsPerByte));
+				UInt64 target = ProofOfWork.Target(SentData.Length);
 
 				Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + SentData.Length);
 
 				if (pow < target) return true;
 				return false;
 			}
-		}
-
-		public static byte[] AddProofOfWork(byte[] data)
-		{
-			Debug.WriteLine("Start AddProofOfWork");
-			var startTime = DateTime.Now;
-
-			UInt64 target =
-				(UInt64)
-				((decimal) Math.Pow(2, 64)/((8 + data.Length + PayloadLengthExtraBytes)*AverageProofOfWorkNonceTrialsPerByte));
-
-			UInt64 trialValue = UInt64.MaxValue;			
-			byte[] initialHash = new byte[8 + 512/8];
-
-			using (var sha512 = new SHA512Managed())
-			{
-				Buffer.BlockCopy(sha512.ComputeHash(data), 0, initialHash, 8, 512/8);
-
-				while (trialValue > target)
-				{
-					for (int i = 0; i < 9; ++i) // nonce = nonce + 1
-					{
-						initialHash[i] += 1;
-						if (initialHash[i] != 0) break;
-						if (i == 8) throw new Exception("don't can calculate pow");
-					}
-
-					byte[] resultHash = sha512.ComputeHash(sha512.ComputeHash(initialHash));
-
-					int pos = 0;
-					trialValue = resultHash.ReadUInt64(ref pos);
-				}
-			}
-
-			Debug.WriteLine("Stop AddProofOfWork time="+(DateTime.Now-startTime).TotalMilliseconds+"ms");
-			
-			byte[] result = new byte[8 + data.Length];
-			Buffer.BlockCopy(initialHash, 0, result, 0, 8);
-			Buffer.BlockCopy(data, 0, result, 8, data.Length);
-			return result;
 		}
 
 		public delegate void EventHandler(Payload payload);
@@ -317,14 +274,14 @@ namespace bitmessage.network
 			return query.FirstOrDefaultAsync().Result;
 		}
 
-		internal static void SendAsync(Client client, string inventoryVectorHex)
+		internal static void SendAsync(NodeConnection nodeConnection, string inventoryVectorHex)
 		{
-			SQLiteAsyncConnection conn = client._bitmessage.DB;
+			SQLiteAsyncConnection conn = nodeConnection.Bitmessage.DB;
 			var query = conn.Table<Payload>().Where(inv => inv.InventoryVectorHex == inventoryVectorHex);
 			query.FirstOrDefaultAsync().ContinueWith(t =>
 				                                         {
 					                                         if (t.Result != null)
-						                                         client.Send(t.Result);
+						                                         nodeConnection.Send(t.Result);
 				                                         });
 		}
 

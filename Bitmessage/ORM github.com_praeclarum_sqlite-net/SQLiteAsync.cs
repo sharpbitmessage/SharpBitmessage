@@ -114,6 +114,41 @@ namespace SQLite
 			});
 		}
 
+		public Task<int> InsertOrReplaceAsync(object item)
+		{
+			return Task.Factory.StartNew(() =>
+			{
+				var conn = GetConnection();
+				using (conn.Lock())
+				{
+					int result = 0;
+
+					int busy = 0;
+					do
+					{
+						try
+						{
+							result = conn.InsertOrReplace(item);
+							busy = _maximumNumberOfAttemptsIfBusy;
+						}
+						catch (SQLiteException e)
+						{
+							if (busy >= _maximumNumberOfAttemptsIfBusy)
+								throw;
+							if ((e.Message == "Busy") || (e.Message == "database is locked"))
+							{
+								Thread.Sleep(10 * busy);
+								busy++;
+							}
+							else
+								throw;
+						}
+					} while (busy < _maximumNumberOfAttemptsIfBusy);
+					return result;
+				}
+			});
+		}
+
 		public Task<int> InsertAsync(object item)
 		{
 			return Task.Factory.StartNew(() =>
@@ -129,24 +164,25 @@ namespace SQLite
 							                             try
 							                             {
 								                             result = conn.Insert(item);
-															 busy = _maximumNumberOfAttemptsIfBusy;
+								                             busy = _maximumNumberOfAttemptsIfBusy;
 							                             }
 							                             catch (SQLiteException e)
 							                             {
-															 if (busy >= _maximumNumberOfAttemptsIfBusy)
-																 throw;
-															 if ((e.Message == "Busy") || (e.Message == "database is locked"))
-															 {
-																 Thread.Sleep(10 * busy);
-																 busy++;
-															 }
-															 else
-																 throw;
+								                             if (busy >= _maximumNumberOfAttemptsIfBusy)
+									                             throw;
+								                             if ((e.Message == "Busy") || (e.Message == "database is locked"))
+								                             {
+									                             Thread.Sleep(10*busy);
+									                             busy++;
+								                             }
+								                             else
+									                             throw;
 							                             }
-													 } while (busy < _maximumNumberOfAttemptsIfBusy);
+						                             } while (busy < _maximumNumberOfAttemptsIfBusy);
 						                             return result;
 					                             }
-				                             });
+				                             }
+				);
 		}
 
 		public Task<int> UpdateAsync (object item)
@@ -351,11 +387,36 @@ namespace SQLite
 			return new AsyncTableQuery<T> (_innerQuery.OrderByDescending<U> (orderExpr));
 		}
 
+		private int _maximumNumberOfAttemptsIfBusy = 100;
+
 		public Task<List<T>> ToListAsync ()
 		{
 			return Task.Factory.StartNew (() => {
 				using (((SQLiteConnectionWithLock)_innerQuery.Connection).Lock ()) {
-					return _innerQuery.ToList ();
+						List<T> result = null;
+
+						int busy = 0;
+						do
+						{
+							try
+							{
+								result = _innerQuery.ToList();
+								busy = _maximumNumberOfAttemptsIfBusy;
+							}
+							catch (SQLiteException e)
+							{
+								if (busy >= _maximumNumberOfAttemptsIfBusy)
+									throw;
+								if ((e.Message == "Busy") || (e.Message == "database is locked"))
+								{
+									Thread.Sleep(10 * busy);
+									busy++;
+								}
+								else
+									throw;
+							}
+						} while (busy < _maximumNumberOfAttemptsIfBusy);
+						return result;
 				}
 			});
 		}

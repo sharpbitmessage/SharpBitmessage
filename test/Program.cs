@@ -1,5 +1,5 @@
 ﻿using System;
-
+using System.Threading;
 using bitmessage;
 using bitmessage.network;
 
@@ -7,50 +7,30 @@ namespace test
 {
 	class Program
 	{
+		private static readonly Bitmessage _bm = new Bitmessage();
 		static void Main(string[] args)
 		{
-			var bm = new Bitmessage();
+			_bm.ReceivePubkey += NewPubkey;
+			_bm.ReceiveBroadcast += NewBroadcast;
+			_bm.ReceiveInvalidBroadcast += _bm_ReceiveInvalidBroadcast;
 
-			#region test send from not my address
-
-			//PrivateKey pk = new PrivateKey();
-
-	//		PrivateKey pk = bm.GeneratePrivateKey("my");
-	//		Debug.WriteLine(pk.Name);
-
-			#endregion 
-
-			bm.ReceiveBroadcast += NewBroadcast;
-			bm.ReceiveInvalidBroadcast += NewBroadcast;
-			bm.ReceivePubkey += NewPubkey;
-			bm.ReceiveInvalidPubkey += NewPubkey;
-
-			string[] a = new[]
-				             {
-					             "BM-GuRLKDhQA5hAhE6PDQpkcvbtt1AuXAdQ",
-					             "BM-oowmchsQvK7FBkTxwXErcF3acitN4tWGQ",
-					             "BM-BbkPSZbzPwpVcYZpU4yHwf9ZPEapN5Zx",
-					             "BM-BcJfZ82sHqW75YYBydFb868yAp1WGh3v",
-					             "BM-ooUwdqvuCyAL2mnQBWGdsarzqaFumDFbn",
-					             "BM-BcBKQWewMn5oxD1WQCCd3Z8ovugWKVBT",
-					             "BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash",
-					             "BM-BbgTgGa6LX3yYqwJSwdwrzysvfWjM2u6",
-					             "BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash",
-					             "BM-Bc7Rspa4zxAPy9PK26vmcyoovftipStp",
-					             "BM-BcJyPfXk9U4V1ckHVN2RmFrdi2kG1Npj"
-				             };
-
-			foreach (string aa in a)
-				bm.SendBroadcast(aa,
-				                 "PyBitmessage Client Vulnerability",
-				                 "Vulnerability allows to send messages from other people's addresses see https://bitmessage.org/forum/index.php/topic,1702.0.html     and, please, help write https://github.com/sharpbitmessage/SharpBitmessage/  :)");
+			PrivateKey pk = _bm.GeneratePrivateKey("tst");
+			Thread.Sleep(1000);
+			//_bm.SendBroadcast(pk.Name, "sub", "body");
 
 			Console.ReadLine();
-			Console.WriteLine(bm.ToString());
+			//Console.WriteLine(bm.ToString());
+		}
+
+		static void _bm_ReceiveInvalidBroadcast(Broadcast broadcast)
+		{
+			Console.WriteLine("Invalid broadcast " + broadcast.Status);
 		}
 
 		private static void NewPubkey(Pubkey pubkey)
 		{
+			//if (pubkey.Name == "BM-2DAV89w336ovy6BUJnfVRD5B9qipFbRgmr")
+				_bm.AddSubscription(pubkey);
 			Console.WriteLine("Pubkey " + pubkey);
 		}
 

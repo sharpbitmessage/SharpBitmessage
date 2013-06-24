@@ -18,11 +18,12 @@ namespace bitmessage.network
 
 		#region Unix DateTime
 
-		private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0);
+		public static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0);
 
 		public static UInt64 ToUnix(this DateTime dt)
 		{
-			return (UInt64) (dt - Epoch).TotalSeconds;
+			UInt64 result = (UInt64) (dt - Epoch).TotalSeconds;
+			return result;
 		}
 
 		public static DateTime FromUnix(this UInt64 unix)
@@ -100,28 +101,30 @@ namespace bitmessage.network
 			ms.Write(bytes, 0, bytes.Length);
 		}
 
-		public static void ReadVarStrSubjectAndBody(this byte[] br, ref int pos, out string subject, out string body)
+		public static void ReadVarStrSubjectAndBody(this byte[] data, ref int pos, out string subject, out string body)
 		{
 			subject = null;
 			body = null;
 
-			int l = (int)br.ReadVarInt(ref pos);
-			
-			for(int i = pos;i<pos+l;++i)
-				if (br[i] == 0x0A) // find first /n
+			int l = (int) data.ReadVarInt(ref pos);
+			int startMessage = pos;
+
+			for (int i = pos; i < pos + l; ++i)
+				if (data[i] == 0x0A) // find first /n
 				{
-					byte[] bytes = br.ReadBytes(ref pos, i - pos);
-					Char[] chars = Encoding.ASCII.GetChars(bytes);
+					byte[] bytes = data.ReadBytes(ref pos, i - pos);
+					Char[] chars = Encoding.UTF8.GetChars(bytes);
 					subject = new String(chars);
 
-					++i;
-					bytes = br.ReadBytes(ref i, l - (i - pos) - 1);
-					chars = Encoding.ASCII.GetChars(bytes);
+					++pos;
+					bytes = data.ReadBytes(ref pos, l - (pos - startMessage));
+					chars = Encoding.UTF8.GetChars(bytes);
 					body = new String(chars);
+
+					break;
 				}
-			pos += l;
 		}
-		
+
 		public static void WriteVarStr(this BinaryWriter bw, string s)
 		{
 			byte[] bytes = Encoding.ASCII.GetBytes(s);

@@ -52,6 +52,17 @@ namespace bitmessage
 			get { return _items.Count; }
 		}
 
+		public void Remove(byte[] hash)
+		{
+			if (hash.Length != 32)
+				throw new ArgumentException("hash.Length!=32");
+			lock (_items)
+				if (!Exists(hash))
+				{
+					_items.RemoveAt(_items.FindIndex(bytes => bytes.SequenceEqual(hash)));
+				}
+		}
+
 		#region IEnumerator
 
 		public IEnumerator<byte[]> GetEnumerator()

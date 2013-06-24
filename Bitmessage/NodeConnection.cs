@@ -1,8 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -11,7 +11,7 @@ using Version = bitmessage.network.Version;
 
 namespace bitmessage
 {
-	public class Client
+	public class NodeConnection
 	{
 		private void debug(string msg)
 		{
@@ -22,7 +22,7 @@ namespace bitmessage
 			Debug.WriteLine("Thread " + prefix + ": " + msg);
 		}
 
-		internal readonly Bitmessage _bitmessage;
+		internal readonly Bitmessage Bitmessage;
 
 		private readonly TcpClient _tcpClient;
 		public readonly Node Node;
@@ -44,10 +44,10 @@ namespace bitmessage
 
 		private readonly MemoryInventory _clientInventory = new MemoryInventory();
 
-		public Client(Bitmessage bitmessage, TcpClient tcpClient)
+		public NodeConnection(Bitmessage bitmessage, TcpClient tcpClient)
 		{
-			_bitmessage = bitmessage;
-			_bitmessage.NewPayload += BitmessageNewPayload;
+			Bitmessage = bitmessage;
+			Bitmessage.NewPayload += OnBitmessageNewPayload;
 			_tcpClient = tcpClient;
 			IPEndPoint ipep = (IPEndPoint) tcpClient.Client.RemoteEndPoint;
 			Node = new Node
@@ -62,15 +62,15 @@ namespace bitmessage
 
 		}
 
-		public Client(Bitmessage bitmessage, Node node)
+		public NodeConnection(Bitmessage bitmessage, Node node)
 		{
-			_bitmessage = bitmessage;
-			_bitmessage.NewPayload += BitmessageNewPayload;
+			Bitmessage = bitmessage;
+			Bitmessage.NewPayload += OnBitmessageNewPayload;
 			Node = node;
 			_tcpClient = new TcpClient(AddressFamily.InterNetwork);
 		}
 
-		private void BitmessageNewPayload(Payload payload)
+		private void OnBitmessageNewPayload(Payload payload)
 		{
 			if (_clientInventory.Exists(payload.InventoryVector)) return;
 			_clientInventory.Insert(payload.InventoryVector);
@@ -94,8 +94,15 @@ namespace bitmessage
 
 		private void ListenerLoop()
 		{
-			NetworkStream ns = _tcpClient.GetStream();
-			while (ns.CanRead)
+			NetworkStream ns = null;
+			try
+			{
+				ns = _tcpClient.GetStream();
+			}
+			// ReSharper disable EmptyGeneralCatchClause
+			catch {} // ReSharper restore EmptyGeneralCatchClause
+
+			while ((ns!=null)&&(ns.CanRead))
 			{
 				#region Read header and payload from network
 
@@ -104,23 +111,20 @@ namespace bitmessage
 				try
 				{
 					header = new Header(BinaryReader);
-					payload = new Payload(header.Command, BinaryReader.ReadBytes((int)header.Length));
+					payload = header.Length == 0 
+						? new Payload(header.Command, null) 
+						: new Payload(header.Command, BinaryReader.ReadBytes(header.Length));
 				}
 				catch (Exception e)
 				{
 					Debug.WriteLine("Похоже, что соединение потерено, извещаю об этом поток _bitmessage " + e);
-					_bitmessage.MaybeDisconnect.Set();
+					Bitmessage.NodeIsDisconnected.Set();
 					break;
 				}
 
 				#endregion Read header and payload from network
 
-				byte[] sha512 = payload.Sha512;
-
-				bool checksum = true;
-
-				for (int i = 0; i < 4; ++i)
-					checksum = checksum && (sha512[i] == header.Checksum[i]);
+				bool checksum = header.Checksum.SequenceEqual(payload.Checksum());
 
 				if (checksum && payload.IsValid)
 				{
@@ -131,7 +135,7 @@ namespace bitmessage
 					if ((header.Command == "msg") || (header.Command == "pubkey") || (header.Command == "broadcast") || (header.Command == "getpubkey"))
 					{
 						_clientInventory.Insert(payload.InventoryVector);
-						payload.SaveAsync(_bitmessage);
+						payload.SaveAsync(Bitmessage);
 					}
 
 					#endregion Save to Inventory
@@ -164,7 +168,7 @@ namespace bitmessage
 						foreach (byte[] inventoryVector in inputInventory)
 						{
 							_clientInventory.Insert(inventoryVector);
-							if (!_bitmessage.MemoryInventory.Exists(inventoryVector))
+							if (!Bitmessage.MemoryInventory.Exists(inventoryVector))
 								buff4GetData.Insert(inventoryVector);
 						}
 
@@ -183,7 +187,7 @@ namespace bitmessage
 
 					else if (header.Command == "verack")
 					{
-						Send(new Inv(_bitmessage.MemoryInventory));
+						Send(new Inv(Bitmessage.MemoryInventory));
 					}
 
 					#endregion
@@ -192,6 +196,13 @@ namespace bitmessage
 
 					else if (header.Command == "getpubkey")
 					{
+						GetPubkey getpubkey = new GetPubkey(payload);
+
+						PrivateKey pk = PrivateKey.Find(Bitmessage.DB, getpubkey);
+						if ((pk != null) && (pk.LastPubkeySendTime.ToUnix() < (DateTime.UtcNow.ToUnix() - Payload.LengthOfTimeToHoldOnToAllPubkeys)))
+							pk.SendAsync(this);
+						{
+						}
 					}
 
 					#endregion getpubkey
@@ -200,15 +211,16 @@ namespace bitmessage
 
 					else if (header.Command == "pubkey")
 					{
-						Pubkey pubkey = new Pubkey(payload);
+						int pos = payload.FirstByteAfterTime;
+						Pubkey pubkey = new Pubkey(payload.SentData, ref pos, true);
 
 						if (pubkey.Status == Status.Valid)
 						{
-							pubkey.SaveAsync(_bitmessage.DB);
-							_bitmessage.OnReceivePubkey(pubkey);
+							pubkey.SaveAsync(Bitmessage.DB);
+							Bitmessage.OnReceivePubkey(pubkey);
 						}
 						else
-							_bitmessage.OnReceiveInvalidPubkey(pubkey);
+							Bitmessage.OnReceiveInvalidPubkey(pubkey);
 					}
 
 					#endregion PUBKEY
@@ -225,12 +237,13 @@ namespace bitmessage
 
 					else if (header.Command == "broadcast")
 					{
-						Broadcast broadcast = new Broadcast(_bitmessage, payload);
+						Broadcast broadcast = new Broadcast(Bitmessage, payload);
+						broadcast.SaveAsync(Bitmessage.DB);
 
 						if (broadcast.Status == Status.Valid)
-							_bitmessage.OnReceiveBroadcast(broadcast);
+							Bitmessage.OnReceiveBroadcast(broadcast);
 						else
-							_bitmessage.OnReceiveInvalidBroadcast(broadcast);
+							Bitmessage.OnReceiveInvalidBroadcast(broadcast);
 					}
 
 					#endregion BROADCAST
@@ -243,7 +256,7 @@ namespace bitmessage
 						UInt64 numberOfAddressesIncluded = payload.SentData.ReadVarInt(ref pos);
 						if ((numberOfAddressesIncluded > 0) && (numberOfAddressesIncluded < 1001))
 						{
-							if (payload.Length != (pos + (34 * (int)numberOfAddressesIncluded)))
+							if (payload.Length != (pos + (38 * (int)numberOfAddressesIncluded)))
 								throw new Exception("addr message does not contain the correct amount of data. Ignoring.");
 
 							//bool needToWriteKnownNodesToDisk = false;
@@ -302,6 +315,8 @@ namespace bitmessage
 				else
 					debug("checksum error");
 			}
+			_tcpClient.Close();
+			Bitmessage.NodeIsDisconnected.Set();
 		}
 
 		public bool Connected { get { return _tcpClient.Connected; } }
@@ -318,20 +333,20 @@ namespace bitmessage
 		{
 			try
 			{
-				if (BinaryWriter != null)
-					lock (BinaryWriter)
-					{
-						BinaryWriter.Write(message.Magic());
-						BinaryWriter.Write(message.СommandBytes());
-						BinaryWriter.Write(message.Length());
-						BinaryWriter.Write(message.Checksum());
-						if (message.SentData != null) BinaryWriter.Write(message.SentData);
-						BinaryWriter.Flush();
-					}
+			if (BinaryWriter != null)
+				lock (BinaryWriter)
+				{
+					BinaryWriter.Write(message.Magic());
+					BinaryWriter.Write(message.СommandBytes());
+					BinaryWriter.Write(message.Length());
+					BinaryWriter.Write(message.Checksum());
+					if (message.SentData != null) BinaryWriter.Write(message.SentData);
+					BinaryWriter.Flush();
+				}
 			}
-			catch(Exception e)
+			catch (Exception e)
 			{
-				Debug.WriteLine(e);
+				throw new Exception("Cоединение потерено", e);
 			}
 		}
 	}

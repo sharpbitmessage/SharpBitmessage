@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -14,8 +15,8 @@ namespace bitmessage
     public class Bitmessage:IDisposable
     {
 		private TcpListener _listener;
-		private readonly List<Client> _clients = new List<Client>(8);
-		internal MemoryInventory MemoryInventory;
+		public readonly List<NodeConnection> nodeConnections = new List<NodeConnection>(8);
+		public MemoryInventory MemoryInventory;
 
 		private readonly Thread _listenerLoopThread;
 		private readonly Thread _clientsControlThread;
@@ -40,7 +41,7 @@ namespace bitmessage
 				DB.CreateTableAsync<PrivateKey>().Wait();
 				DB.CreateTableAsync<Broadcast>().Wait();
 
-				DB.InsertAsync(new Node("127.0.0.1", 8444)).Wait();
+				DB.InsertOrReplaceAsync(new Node("127.0.0.1", 8444)).Wait();
 
 				//db.InsertAsync(new Node("80.69.173.220", 443)).Wait();
 				//db.InsertAsync(new Node("109.95.105.15", 8443)).Wait();
@@ -92,7 +93,7 @@ namespace bitmessage
 					_listener.Stop();
 				_listener = null;
 
-				foreach (Client client in _clients)
+				foreach (NodeConnection client in nodeConnections)
 					client.Stop();
 				
 				_disposed = true;
@@ -107,14 +108,14 @@ namespace bitmessage
 		{
 			while (_listener != null)
 			{
-				Client incoming = new Client(this, _listener.AcceptTcpClient());
+				NodeConnection incoming = new NodeConnection(this, _listener.AcceptTcpClient());
 				Debug.WriteLine("Подключение к серверу c " + incoming.Node.HostStreamPort);
 
-				foreach (var client in _clients)
+				foreach (var client in nodeConnections)
 					if (client.Node.HostStreamPort == incoming.Node.HostStreamPort)
 						client.Stop();
 
-				_clients.Add(incoming);
+				nodeConnections.Add(incoming);
 
 				incoming.Listen();
 			}
@@ -126,21 +127,21 @@ namespace bitmessage
 			while (_listener != null)
 			{
 				// Удаляю неподключенные клиенты
-				for (int i = _clients.Count - 1; i >= 0; --i)
-					if (!_clients[i].Connected)
-						_clients.RemoveAt(i);
+				for (int i = nodeConnections.Count - 1; i >= 0; --i)
+					if (!nodeConnections[i].Connected)
+						nodeConnections.RemoveAt(i);
 				// Довожу количество подключенных клиентов до 8
-				if (_clients.Count<8)
+				if (nodeConnections.Count<8)
 				{
 					var task = DB.Table<Node>().OrderBy(x => x.NumberOfBadConnection).ToListAsync();
 					task.Wait();
 					var nodes = task.Result;
 					foreach (Node node in nodes)
 					{
-						bool find = _clients.Any(c => c.Node.HostStreamPort == node.HostStreamPort);
+						bool find = nodeConnections.Any(c => c.Node.HostStreamPort == node.HostStreamPort);
 						if(!find)
 						{
-							Client c = new Client(this, node);
+							NodeConnection c = new NodeConnection(this, node);
 							try
 							{
 								Debug.WriteLine("Пытаюсь подключиться к "+node.HostStreamPort);
@@ -153,18 +154,18 @@ namespace bitmessage
 							if (c.Connected)
 							{
 								Debug.WriteLine("Подключился к " + node.HostStreamPort);
-								_clients.Add(c);
+								nodeConnections.Add(c);
 							}
-							if (_clients.Count >= 8) break;
+							if (nodeConnections.Count >= 8) break;
 						}
 					}
 				}
 				// Сплю минуту, или если уведомят из Helper.ReadHeaderMagic
-				MaybeDisconnect.WaitOne(60*1000);
+				NodeIsDisconnected.WaitOne(60*1000);
 			}
 		}
 
-	    public AutoResetEvent MaybeDisconnect = new AutoResetEvent(false);
+	    public AutoResetEvent NodeIsDisconnected = new AutoResetEvent(false);
 
 	    public event Payload.EventHandler   NewPayload;
 		public event Broadcast.EventHandler ReceiveBroadcast;
@@ -211,9 +212,14 @@ namespace bitmessage
 			return privateKey;
 		}
 
-		public IEnumerable<PrivateKey> ListAddresses()
+		public IEnumerable<PrivateKey> ListMyAddresses()
 		{
 			return PrivateKey.GetAll(DB);
+		}
+
+		public IEnumerable<Pubkey> ListOtherAddresses()
+		{
+			return Pubkey.GetAll(DB);
 		}
 
 		public PrivateKey CreateRandomAddress(string label, bool eighteenByteRipe = false)
@@ -223,7 +229,7 @@ namespace bitmessage
 			return privateKey;
 		}
 
-	    public IEnumerable<Message> GetAllInboxMessages()
+	    public IEnumerable<Broadcast> GetAllInboxMessages()
 	    {
 			throw new NotImplementedException();
 	    }
@@ -250,6 +256,34 @@ namespace bitmessage
 			broadcast.Send();
 		}
 
+		public IEnumerable<Pubkey> Subscriptions(string stream)
+		{
+			var query =
+				DB.Table<Pubkey>()
+					.Where(v => v.SubscriptionIndex > 0)
+					.Where(v => v.Stream4DB == stream)
+					.OrderByDescending(v => v.SubscriptionIndex);
+			return query.ToListAsync().Result;
+		}
+
+	    public void AddSubscription(Pubkey pubkey)
+		{
+			if (pubkey.SubscriptionIndex == 0)
+			{
+				pubkey.SubscriptionIndex = 1;
+				pubkey.SaveAsync(DB);
+			}
+		}
+
+		public void DeleteSubscription(Pubkey pubkey)
+		{
+			if (pubkey.SubscriptionIndex != 0)
+			{
+				pubkey.SubscriptionIndex = 0;
+				pubkey.SaveAsync(DB);
+			}
+		}
+
 		#endregion see https://bitmessage.org/wiki/API_Reference
-    }
+	}
 }

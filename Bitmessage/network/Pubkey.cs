@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using SQLite;
 using bitmessage.Crypto;
@@ -14,10 +17,17 @@ namespace bitmessage.network
 		private string _name;
 		private ulong _nonceTrialsPerByte;
 		private ulong _extraBytes;
-		private ulong _version = 2;
+		private ulong _version = 3;
 		private ulong _stream = 1;
+		private uint _behaviorBitfield = 1;
+		private Status _status = Status.Valid;
 
-		public Status Status { get; set; }
+		[Ignore]
+		public Status Status
+		{
+			get { return _status; }
+			set { _status = value; }
+		}
 
 		public string Label { get; set; }
 
@@ -49,7 +59,12 @@ namespace bitmessage.network
 			set { Stream = UInt64.Parse(value); }
 		}
 
-		public UInt32 BehaviorBitfield { get; set; }
+		public UInt32 BehaviorBitfield
+		{
+			get { return _behaviorBitfield; }
+			set { _behaviorBitfield = value; }
+		}
+
 		public byte[] SigningKey { get; set; }
 		public byte[] EncryptionKey { get; set; }
 
@@ -89,44 +104,52 @@ namespace bitmessage.network
 			set { ExtraBytes = UInt64.Parse(value); }
 		}
 
-		public Pubkey(Payload payload)
+		public Pubkey() { }
+
+		public Pubkey(byte[] data, ref int pos, bool checkSign = false)
 		{
 			Status = Status.Invalid;
-
-			int pos = payload.FirstByteAfterTime;
-
-			Version = payload.SentData.ReadVarInt(ref pos);
-
-			if ((Version<=3))
+			try
 			{
-				Stream = payload.SentData.ReadVarInt(ref pos);
-				BehaviorBitfield = payload.SentData.ReadUInt32(ref pos);
-				SigningKey = ((byte) 4).Concatenate(payload.SentData.ReadBytes(ref pos, 64));
-				EncryptionKey = ((byte) 4).Concatenate(payload.SentData.ReadBytes(ref pos, 64));
+				int timeStartPos = pos - 8;
+				if (pos == 12) timeStartPos = 8;// now, time have 4 bite length, but i wait 8
 
-				if (Version==3)
+				Version = data.ReadVarInt(ref pos);
+				Stream = data.ReadVarInt(ref pos);
+				BehaviorBitfield = data.ReadUInt32(ref pos);
+				SigningKey = ((byte)4).Concatenate(data.ReadBytes(ref pos, 64));
+				EncryptionKey = ((byte)4).Concatenate(data.ReadBytes(ref pos, 64));
+
+				if (Version < 3)
 				{
-					NonceTrialsPerByte = payload.SentData.ReadUInt64(ref pos);
-					ExtraBytes = payload.SentData.ReadUInt64(ref pos);
+					Status = Status.Valid;
+					return;
 				}
-				Status = Status.Valid;
-			}
-			// TODO CheckSing
-		}
+				NonceTrialsPerByte = data.ReadVarInt(ref pos);
+				ExtraBytes = data.ReadVarInt(ref pos);
 
-		public Pubkey(
-					UInt64 addressVersion,
-					UInt64 streamNumber,
-					UInt32 behaviorBitfield,
-					byte[] publicSigningKey,
-					byte[] publicEncryptionKey
-					)
-		{
-			Version = addressVersion;
-			Stream = streamNumber;
-			BehaviorBitfield = behaviorBitfield;
-			SigningKey = publicSigningKey;
-			EncryptionKey = publicEncryptionKey;
+				if (!checkSign)
+				{
+					Status = Status.Valid;
+					return;
+				}
+
+				if (timeStartPos >= 0)
+				{
+					byte[] forCheck = new byte[pos - timeStartPos];
+					Buffer.BlockCopy(data, timeStartPos, forCheck, 0, forCheck.Length);
+
+					int signLen = (int)data.ReadVarInt(ref pos);
+					var sign = data.ReadBytes(ref pos, signLen);
+
+					if (ECDSA.ECDSAVerify(forCheck, SigningKey, sign))
+						Status = Status.Valid;
+				}
+			}
+			catch
+			{
+				Status = Status.Invalid;
+			} 
 		}
 
 		[PrimaryKey]
@@ -134,8 +157,8 @@ namespace bitmessage.network
 		{
 			get
 			{
-				if (Status != Status.Valid)
-					return "Invalid";
+				//if (Status != Status.Valid)
+				//	return "Invalid";
 				if (String.IsNullOrEmpty(_name))
 				{
 					byte[] v = Version.VarIntToBytes();
@@ -173,30 +196,129 @@ namespace bitmessage.network
 			return Name;
 		}
 
+		/// <summary>
+		/// if > 0 then subscription is active
+		/// </summary>
+		public int SubscriptionIndex { get; set; }
+
 		#region for DB
 
-		public Pubkey() { }
-
-		public static Pubkey GetPubkey(SQLiteAsyncConnection conn, string name)
+		public static Pubkey Find(SQLiteAsyncConnection conn, string name)
 		{
 			var task = conn.Table<Pubkey>().Where(k => (k.Name == name)).FirstOrDefaultAsync();
-			task.Wait();
 			return task.Result;
 		}
 
-		public virtual void SaveAsync(SQLiteAsyncConnection db) { db.InsertAsync(this); }
+		public virtual void SaveAsync(SQLiteAsyncConnection db)
+		{
+			if (Status == Status.Valid)
+				db.InsertOrReplaceAsync(this);
+		}
 
 		#endregion for DB
-		
+
+		private byte[] _hash;
+
 		[Ignore]
 		public byte[] Hash
 		{
 			get
 			{
-				byte[] buff = SigningKey.Concatenate(EncryptionKey);
-				byte[] sha = new SHA512Managed().ComputeHash(buff);
-				return RIPEMD160.Create().ComputeHash(sha);
+				if (_hash == null)
+				{
+					byte[] buff = SigningKey.Concatenate(EncryptionKey);
+					byte[] sha = new SHA512Managed().ComputeHash(buff);
+					_hash = RIPEMD160.Create().ComputeHash(sha);
+				}
+				return _hash;
 			}
+			set { _hash = value; }
+		}
+
+		[MaxLength(40)]
+		public string Hash4DB
+		{
+			get { return Hash.ToHex(false); }
+			set { Hash = value.HexToBytes(); }
+		}
+
+		public byte[] DecryptAES256CBC(byte[] data)
+		{
+			//blocksize = OpenSSL.get_cipher(ciphername).get_blocksize()
+			const int blocksize = 16;
+
+			//iv = data[:blocksize]
+			//i = blocksize
+			int pos = 0;
+			var iv = data.ReadBytes(ref pos, blocksize);
+			
+			//curve, pubkey_x, pubkey_y, i2 = ECC._decode_pubkey(data[i:])
+			//i += i2
+			UInt16 curve;
+			byte[] pubkeyX;
+			byte[] pubkeyY;
+			ECC._decode_pubkey(data, out curve, out pubkeyX, out pubkeyY, ref pos);
+
+			//ciphertext = data[i:len(data)-32]
+			//i += len(ciphertext)
+			var ciphertext = data.ReadBytes(ref pos, data.Length - pos - 32);
+
+			//mac = data[i:]
+			var mac = data.ReadBytes(ref pos, 32);
+
+			//key = sha512(self.raw_get_ecdh_key(pubkey_x, pubkey_y)).digest()
+			byte[] key;
+			using (var sha512 = new SHA512Managed())
+				key = sha512.ComputeHash(new ECC(null, null, null, null, Sha512VersionStreamHashFirst32(),ECC.Secp256K1).raw_get_ecdh_key(pubkeyX, pubkeyY));
+
+			//key_e, key_m = key[:32], key[32:]
+			byte[] key_e = new byte[32];
+			byte[] key_m = new byte[32];
+			Buffer.BlockCopy(key,  0, key_e, 0, 32);
+			Buffer.BlockCopy(key, 32, key_m, 0, 32);
+
+			//if hmac_sha256(key_m, ciphertext) != mac:
+			//	raise RuntimeError("Fail to verify data")
+			if (!new HMACSHA256(key_m).ComputeHash(ciphertext).SequenceEqual(mac))
+				throw new Exception("Fail to verify data");
+
+			var ctx = new Cipher(key_e, iv, false);
+			return ctx.Ciphering(ciphertext);
+		}
+
+		public byte[] Sha512VersionStreamHashFirst32()
+		{
+			byte[] result = new byte[32];
+			using (var sha512 = new SHA512Managed())
+				Buffer.BlockCopy(
+					sha512.ComputeHash(Version.VarIntToBytes().Concatenate(Stream.VarIntToBytes()).Concatenate(Hash)), 0,
+					result, 0, 32);
+			return result;
+		}
+
+		public static IEnumerable<Pubkey> GetAll(SQLiteAsyncConnection conn)
+		{
+			return conn.Table<Pubkey>().ToListAsync().Result;
+		}
+
+		internal byte[] GetPayload4Broadcast()
+		{
+			MemoryStream payload = new MemoryStream(500);
+
+            payload.WriteVarInt(Version);
+            payload.WriteVarInt(Stream);
+			payload.Write(BehaviorBitfield);
+             
+			payload.Write(SigningKey,1,SigningKey.Length-1);
+			payload.Write(EncryptionKey,1,EncryptionKey.Length-1);
+
+			if (Version>=3)
+			{
+				payload.Write(NonceTrialsPerByte);
+				payload.Write(NetworkDefaultPayloadLengthExtraBytes);
+			}
+
+			return payload.ToArray();
 		}
 	}
 }

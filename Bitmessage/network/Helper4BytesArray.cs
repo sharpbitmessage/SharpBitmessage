@@ -14,15 +14,7 @@ namespace bitmessage.network
 			if (!BitConverter.IsLittleEndian)
 				return inArray;
 
-			int highCtr = inArray.Length - 1;
-
-			for (int ctr = 0; ctr < inArray.Length / 2; ctr++)
-			{
-				byte temp = inArray[ctr];
-				inArray[ctr] = inArray[highCtr];
-				inArray[highCtr] = temp;
-				highCtr -= 1;
-			}
+			Array.Reverse(inArray);
 			return inArray;
 		}
 

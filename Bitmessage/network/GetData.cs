@@ -19,12 +19,21 @@ namespace bitmessage.network
 
 		public GetData(byte[] payload)
 		{
-			int pos = 0;
-			int brL = payload.Length;
-			int count = (int) payload.ReadVarInt(ref pos);
-			Inventory = new MemoryInventory(count);
-			for (int i = 0; (i < count) && (brL > pos); ++i)
-				Inventory.Insert(payload.ReadBytes(ref pos, 32));
+			if (payload.Length == 32)
+			{
+				Inventory = new MemoryInventory(1);
+				Inventory.Insert(payload);
+			}
+			else
+			{
+
+				int pos = 0;
+				int brL = payload.Length;
+				int count = (int) payload.ReadVarInt(ref pos);
+				Inventory = new MemoryInventory(count);
+				for (int i = 0; (i < count) && (brL > pos); ++i)
+					Inventory.Insert(payload.ReadBytes(ref pos, 32));
+			}
 		}
 
 		public string Command

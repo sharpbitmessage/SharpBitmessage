@@ -1,15 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-
+using System.IO;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using SQLite;
 using bitmessage.Crypto;
 using System.Linq;
 
 namespace bitmessage.network
 {
-	public class PrivateKey : Pubkey
+	public class PrivateKey : Pubkey, ICanBeSent
 	{
 		public string PrivSigningKeyWif { get; set; }
 		public string PrivEncryptionKeyWif { get; set; }
@@ -120,19 +121,70 @@ namespace bitmessage.network
 			return task.Result;
 		}
 
+		public DateTime LastPubkeySendTime
+		{
+			get { return _lastPubkeySendTime; }
+			set { _lastPubkeySendTime = value; }
+		}
+
+		public string Command
+		{
+			get { return "pubkey"; }
+		}
+
+		private byte[] _sendData;
+		private DateTime _lastPubkeySendTime = Helper.Epoch;
+
+		public byte[] SentData
+		{
+			get
+			{
+				if (_sendData == null)
+				{
+					MemoryStream payload = new MemoryStream(1000);
+
+					Random rnd = new Random();
+					var dt = DateTime.UtcNow.ToUnix() + (ulong)rnd.Next(600) - 300;
+					payload.Write(dt);
+
+					payload.WriteVarInt(Version);
+					payload.WriteVarInt(Stream);
+
+					payload.Write(BehaviorBitfield);
+
+					if (SigningKey.Length != 65)
+						throw new Exception("SigningKey.Length!=65");
+					if (EncryptionKey.Length != 65)
+						throw new Exception("EncryptionKey.Length!=65");
+					payload.Write(SigningKey, 1, 64);
+					payload.Write(EncryptionKey, 1, 64);
+
+					payload.WriteVarInt(NonceTrialsPerByte);
+					payload.WriteVarInt(ExtraBytes);
+
+					byte[] signature = Sign(payload.ToArray());
+
+					payload.WriteVarInt((UInt64) signature.Length);
+					payload.Write(signature, 0, signature.Length);
+
+					_sendData = ProofOfWork.AddPow(payload.ToArray());
+				}
+				return _sendData;
+			}
+		}
+
 		#region for DB
 
 		public PrivateKey(){}
 
 		public new void SaveAsync(SQLiteAsyncConnection db)
 		{
-			db.InsertAsync(this);
+			db.InsertOrReplaceAsync(this);
 		}
 
-		public static IEnumerable<PrivateKey> GetAll(SQLiteAsyncConnection conn)
+		public new static IEnumerable<PrivateKey> GetAll(SQLiteAsyncConnection conn)
 		{
-			var task = conn.Table<PrivateKey>().OrderBy(k => k.Name).ToListAsync();
-			return task.Result;
+			return conn.Table<PrivateKey>().ToListAsync().Result;
 		}
 
 		public static PrivateKey FirstOrDefault(SQLiteAsyncConnection conn)
@@ -140,7 +192,26 @@ namespace bitmessage.network
 			var task = conn.Table<PrivateKey>().FirstOrDefaultAsync();
 			return task.Result;
 		}
+
+		internal static PrivateKey Find(SQLiteAsyncConnection conn, GetPubkey getpubkey)
+		{
+			var task = conn.Table<PrivateKey>()
+				.Where(k => k.Hash4DB == getpubkey.Hash4DB)
+				.Where(k => k.Version4DB == getpubkey.Version4DB)
+				.Where(k => k.Stream4DB == getpubkey.Stream4DB)
+				.FirstOrDefaultAsync();
+			return task.Result;
+		}
 		
 		#endregion for DB
+
+		internal void SendAsync(NodeConnection nodeConnection)
+		{
+			LastPubkeySendTime = DateTime.UtcNow;
+			SaveAsync(nodeConnection.Bitmessage.DB);
+			new Task(() => 
+				new Payload(Command, SentData).SaveAsync(nodeConnection.Bitmessage)
+				).Start();
+		}
 	}	
 }

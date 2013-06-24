@@ -10,7 +10,7 @@ namespace bitmessage.network
 		private static readonly byte[] IpPrefix = new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF};
 		public static readonly UInt64 EightBytesOfRandomDataUsedToDetectConnectionsToSelf = new Random().NextUInt64();
 
-		public readonly int Value = 1;
+		public readonly int Value = 2;
 		public readonly UInt64 Services = 1;
 		public readonly UInt64 Timestamp = DateTime.UtcNow.ToUnix();
 

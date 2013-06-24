@@ -29,5 +29,5 @@ namespace bitmessage
 		Simple = 2
 	};
 
-	public enum Status{New, Valid, Invalid}
+	public enum Status { New, Valid, Invalid, Encrypted}
 }
