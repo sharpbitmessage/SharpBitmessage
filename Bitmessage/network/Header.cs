@@ -14,14 +14,21 @@ namespace bitmessage.network
 		public Header(BinaryReader br)
 		{
 			ReadHeaderMagic(br);
-			Command = ReadHeaderCommand(br);
-			UInt32 tmpLength = BitConverter.ToUInt32(br.ReadBytes(4).ReverseIfNeed(), 0);
+			Command = ReadHeaderCommand( br.ReadBytes(12) );
+			Length  = ReadLength       ( br.ReadBytes(4)  );
+			Checksum =                   br.ReadBytes(4)   ;
+		}
+
+		public static int ReadLength(byte[] bytes)
+		{
+			UInt32 tmpLength = BitConverter.ToUInt32(bytes.ReverseIfNeed(), 0);
 			if (tmpLength < int.MaxValue)
-				Length = (int) tmpLength;
+				return (int) tmpLength;
 			else
 				throw new Exception("Header Length > int.MaxValue");
-			Checksum = br.ReadBytes(4);
 		}
+
+		public static byte[] Magic = new byte[] { 0xE9, 0xBE, 0xB4, 0xD9 };
 
 		private static void ReadHeaderMagic(BinaryReader br)
 		{
@@ -34,25 +41,20 @@ namespace bitmessage.network
 					{
 						do
 						{
-						} while (br.ReadByte() != 0xE9);
-					} while (br.ReadByte() != 0xBE);
-				} while (br.ReadByte() != 0xB4);
-			} while (br.ReadByte() != 0xD9);
+						} while (br.ReadByte() != Magic[0]);
+					} while (br.ReadByte() != Magic[1]);
+				} while (br.ReadByte() != Magic[2]);
+			} while (br.ReadByte() != Magic[3]);
 			Debug.WriteLine(" - ok");
 		}
 
-
-		private static string ReadHeaderCommand(BinaryReader br)
+		public static string ReadHeaderCommand(byte[] bytes)
 		{
-			Debug.Write("ReadHeaderCommand - ");
-
-			byte[] bytes = br.ReadBytes(12);
-
 			StringBuilder result = new StringBuilder(12);
 			foreach (byte b in bytes)
 			{
 				if (b == 0) break;
-				result.Append(Encoding.ASCII.GetChars(new[] {b}));
+				result.Append(Encoding.ASCII.GetChars(new[] { b }));
 			}
 			Debug.WriteLine("ReadHeaderCommand - " + result);
 			return result.ToString();

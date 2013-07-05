@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 using SQLite;
 using bitmessage.Crypto;
 using System.Linq;
@@ -44,7 +45,7 @@ namespace bitmessage.network
 						if (subscriptionKey.Stream != _stream) continue;
 						try
 						{
-							decryptedData = subscriptionKey.DecryptAES256CBC(encrypted);
+							decryptedData = subscriptionKey.DecryptAES256CBC4Broadcast(encrypted);
 							encryptionKey = subscriptionKey;
 						}
 							// ReSharper disable EmptyGeneralCatchClause
@@ -65,7 +66,7 @@ namespace bitmessage.network
 					if (encryptionKey.SubscriptionIndex < int.MaxValue)
 					{
 						encryptionKey.SubscriptionIndex += 1;
-						encryptionKey.SaveAsync(bm.DB);
+						encryptionKey.SaveAsync(bm.DB).Wait();
 					}
 
 					pos = 0;
@@ -80,12 +81,12 @@ namespace bitmessage.network
 
 					int posOfEndMsg = pos;
 					UInt64 signatureLength = decryptedData.ReadVarInt(ref pos);
-					Signature = decryptedData.ReadBytes(ref pos, (int) signatureLength);
+					byte[] signature = decryptedData.ReadBytes(ref pos, (int) signatureLength);
 
 					byte[] data = new byte[posOfEndMsg];
 					Buffer.BlockCopy(decryptedData, 0, data, 0, posOfEndMsg);
 
-					if (data.ECDSAVerify(encryptionKey.SigningKey, Signature))
+					if (data.ECDSAVerify(encryptionKey.SigningKey, signature))
 						Status = Status.Valid;
 				}
 			}
@@ -102,8 +103,8 @@ namespace bitmessage.network
 		public string InventoryVectorHex
 		{
 			get 
-			{ 
-				return _inventoryVector != null ? _inventoryVector.ToHex(false) : GetPayload().InventoryVector.ToHex(false);
+			{ 				
+				return _inventoryVector != null ? _inventoryVector.ToHex(false)  : GetPayload().InventoryVector.ToHex(false);
 			}
 			set
 			{
@@ -120,51 +121,7 @@ namespace bitmessage.network
 			lock(_lock4GetPayload)
 			if (_payload == null)
 			{
-				#region if (_version == 1)
-				if (_version == 1)
-				{
-					PrivateKey privkey = PrivateKey.GetPrivateKey(_bm.DB, Key);
-					Pubkey pubkey = privkey;
-					if (privkey == null)
-					{
-						privkey = PrivateKey.FirstOrDefault(_bm.DB);
-						pubkey = Pubkey.Find(_bm.DB, Key);
-
-						if (privkey == null)
-						{
-							privkey = new PrivateKey("my");
-						}
-						if (pubkey == null)
-							pubkey = privkey;
-					}
-
-					MemoryStream data = new MemoryStream(1000 + Subject.Length + Body.Length); // TODO realy 1000?
-					Random rnd = new Random();
-					var dt = DateTime.UtcNow.ToUnix() + (ulong) rnd.Next(600) - 300;
-					data.Write(dt);
-					data.WriteVarInt(Version);
-
-					data.WriteVarInt(pubkey.Version);
-					data.WriteVarInt(pubkey.Stream);
-					data.Write(pubkey.BehaviorBitfield);
-					data.Write(pubkey.SigningKey, 1, pubkey.SigningKey.Length - 1);
-					data.Write(pubkey.EncryptionKey, 1, pubkey.EncryptionKey.Length - 1);
-					if (pubkey.Hash.Length != 20) throw new Exception("error AddressHash length");
-					data.Write(pubkey.Hash, 0, pubkey.Hash.Length);
-
-					Byte encodingType = (byte) EncodingType;
-					data.Write(encodingType);
-					data.WriteVarStr(Subject + "\n" + Body);
-
-					byte[] signature = privkey.Sign(data.ToArray());
-
-					data.WriteVarInt((UInt64) signature.Length);
-					data.Write(signature, 0, signature.Length);
-
-					_payload = new Payload("broadcast", ProofOfWork.AddPow(data.ToArray()));
-				}
-				#endregion 
-				else
+				if (_version == 2)
 				{
 					PrivateKey privkey = PrivateKey.GetPrivateKey(_bm.DB, Key);
 					if (privkey == null) throw new Exception("PrivateKey not found");
@@ -185,7 +142,7 @@ namespace bitmessage.network
 					
 					Byte encodingType = (byte)EncodingType;
 					dataToEncrypt.Write(encodingType);
-					dataToEncrypt.WriteVarStr(Subject + "\x0a" + Body);
+					dataToEncrypt.WriteVarStr("Subject:" + Subject + "\nBody:" + Body);
 
 					byte[] signature = privkey.Sign(dataToEncrypt.ToArray());
 
@@ -195,7 +152,8 @@ namespace bitmessage.network
 					var privEncryptionKey = privkey.Sha512VersionStreamHashFirst32();
 					var pubEncryptionKey = ECDSA.PointMult(privEncryptionKey);
 
-					byte[] encrypt = ECDSA.Encrypt(dataToEncrypt.ToArray(), pubEncryptionKey);
+					byte[] bytesToEncrypt = dataToEncrypt.ToArray();
+					byte[] encrypt = ECDSA.Encrypt(bytesToEncrypt, pubEncryptionKey);
 
 					payload.Write(encrypt, 0, encrypt.Length);
 
@@ -251,8 +209,14 @@ namespace bitmessage.network
 			get { return _body; }
 			set { _body = value; }
 		}
-		public byte[] Signature { get; set; }
-		public DateTime ReceivedTime { get; set; }
+
+		private DateTime _receivedTime = DateTime.UtcNow;
+	
+		public DateTime ReceivedTime
+		{
+			get { return _receivedTime; }
+			set { _receivedTime = value; }
+		}
 
 		public Status Status { get; set; }
 
@@ -260,7 +224,7 @@ namespace bitmessage.network
 
 		public override string ToString()
 		{
-			return "Broadcast from " + Address();
+			return "Broadcast from " + Address() + " InventoryVector " + InventoryVectorHex;
 		}
 
 		public string Address()
@@ -270,10 +234,9 @@ namespace bitmessage.network
 			return "Message don't valid. Version=" + Version;
 		}
 
-		public void SaveAsync(SQLiteAsyncConnection db)
+		public Task<int> SaveAsync(SQLiteAsyncConnection db)
 		{
-			if(Status==Status.Valid)
-				db.InsertOrReplaceAsync(this).Wait();
+			return Status==Status.Valid ? db.InsertOrReplaceAsync(this) : null;
 		}
 
 		internal void Send()

@@ -1,9 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "bitmessage", "bitmessage\bitmessage.csproj", "{E7D7B85F-89D7-44D7-BF99-89C597B7E852}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bitmessage", "bitmessage\Bitmessage.csproj", "{E7D7B85F-89D7-44D7-BF99-89C597B7E852}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "test", "test\test.csproj", "{C402F4AE-771B-4DFE-A8C1-FC0BD4D58B4C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReadAllBroadcast", "ReadAllBroadcast\ReadAllBroadcast.csproj", "{6637F246-45E6-46F1-B928-2D12CBF5C011}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AddressGeneration", "AddressGeneration\AddressGeneration.csproj", "{6A284D63-3CF2-4033-8C72-040F445C267E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{35CBC13C-09A7-4B30-A20C-E09E1CA7ED5E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,8 +31,25 @@ Global
 		{C402F4AE-771B-4DFE-A8C1-FC0BD4D58B4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C402F4AE-771B-4DFE-A8C1-FC0BD4D58B4C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C402F4AE-771B-4DFE-A8C1-FC0BD4D58B4C}.Release|x86.ActiveCfg = Release|Any CPU
+		{6637F246-45E6-46F1-B928-2D12CBF5C011}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6637F246-45E6-46F1-B928-2D12CBF5C011}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6637F246-45E6-46F1-B928-2D12CBF5C011}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6637F246-45E6-46F1-B928-2D12CBF5C011}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6637F246-45E6-46F1-B928-2D12CBF5C011}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6637F246-45E6-46F1-B928-2D12CBF5C011}.Release|x86.ActiveCfg = Release|Any CPU
+		{6A284D63-3CF2-4033-8C72-040F445C267E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6A284D63-3CF2-4033-8C72-040F445C267E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6A284D63-3CF2-4033-8C72-040F445C267E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6A284D63-3CF2-4033-8C72-040F445C267E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6A284D63-3CF2-4033-8C72-040F445C267E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6A284D63-3CF2-4033-8C72-040F445C267E}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{C402F4AE-771B-4DFE-A8C1-FC0BD4D58B4C} = {35CBC13C-09A7-4B30-A20C-E09E1CA7ED5E}
+		{6637F246-45E6-46F1-B928-2D12CBF5C011} = {35CBC13C-09A7-4B30-A20C-E09E1CA7ED5E}
+		{6A284D63-3CF2-4033-8C72-040F445C267E} = {35CBC13C-09A7-4B30-A20C-E09E1CA7ED5E}
 	EndGlobalSection
 EndGlobal

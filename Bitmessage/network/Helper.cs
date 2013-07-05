@@ -90,13 +90,13 @@ namespace bitmessage.network
 		{
 			int l = (int)br.ReadVarInt(ref pos);
 			byte[] bytes = br.ReadBytes(ref pos, l);
-			Char[] chars = Encoding.ASCII.GetChars(bytes);
+			Char[] chars = Encoding.UTF8.GetChars(bytes);
 			return new String(chars);
 		}
 
 		public static void WriteVarStr(this MemoryStream ms, string data)
 		{
-			byte[] bytes = Encoding.ASCII.GetBytes(data);
+			byte[] bytes = Encoding.UTF8.GetBytes(data);
 			ms.WriteVarInt((UInt64) bytes.Length);
 			ms.Write(bytes, 0, bytes.Length);
 		}
@@ -127,7 +127,7 @@ namespace bitmessage.network
 
 		public static void WriteVarStr(this BinaryWriter bw, string s)
 		{
-			byte[] bytes = Encoding.ASCII.GetBytes(s);
+			byte[] bytes = Encoding.UTF8.GetBytes(s);
 			bw.Write(((UInt64) bytes.Length).VarIntToBytes());
 			bw.Write(bytes);
 		}

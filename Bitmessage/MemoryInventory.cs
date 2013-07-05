@@ -11,7 +11,8 @@ namespace bitmessage
 	public class MemoryInventory : IEnumerable<byte[]>
 	{
 		private readonly List<byte[]> _items;
-
+		private readonly List<byte[]> _waiting = new List<byte[]>();
+		
 		public MemoryInventory(int capacity = 3000)
 		{
 			_items = new List<byte[]>(capacity);
@@ -28,23 +29,51 @@ namespace bitmessage
 				_items.Add(payload.InventoryVector);
 		}
 
-		public bool Exists(byte[] hash)
+		public bool Exists(byte[] hash, bool waiting = true)
 		{
 			lock (_items)
-				return _items.Exists(bytes => bytes.SequenceEqual(hash));
+			{
+				bool w = waiting && _waiting.Exists(bytes => bytes.SequenceEqual(hash));
+				// Exists in waiting (if need) or items ?
+				return w || _items.Exists(bytes => bytes.SequenceEqual(hash));
+			}
 		}
 
-		public bool Insert(byte[] hash)
+		public bool AddWait(byte[] hash)
 		{
 			if (hash.Length != 32)
 				throw new ArgumentException("hash.Length!=32");
 			lock (_items)
 				if (!Exists(hash))
 				{
-					_items.Add(hash);
+					_waiting.Add(hash);
 					return true;
 				}
 			return false;
+		}
+
+		public bool Insert(byte[] hash)
+		{
+			bool result = false;
+			if (hash.Length != 32)
+				throw new ArgumentException("hash.Length!=32");
+			lock (_items)
+			{
+				// delete from _waiting
+				int index = _waiting.FindIndex(bytes => bytes.SequenceEqual(hash));
+				if (index >= 0)
+				{
+					_waiting.RemoveAt(index);
+					result = true;
+				}
+				// add to _items
+				if (!Exists(hash, false))
+				{
+					_items.Add(hash);
+					result = true;
+				}
+			}
+			return result;
 		}
 
 		public int Count
@@ -57,10 +86,13 @@ namespace bitmessage
 			if (hash.Length != 32)
 				throw new ArgumentException("hash.Length!=32");
 			lock (_items)
-				if (!Exists(hash))
-				{
-					_items.RemoveAt(_items.FindIndex(bytes => bytes.SequenceEqual(hash)));
-				}
+			{
+				int index = _items.FindIndex(bytes => bytes.SequenceEqual(hash));
+				if (index >= 0) _items.RemoveAt(index);
+
+				index = _waiting.FindIndex(bytes => bytes.SequenceEqual(hash));
+				if (index >= 0) _waiting.RemoveAt(index);
+			}
 		}
 
 		#region IEnumerator

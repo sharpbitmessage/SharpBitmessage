@@ -39,6 +39,7 @@
   <ItemGroup>
     <Compile Include="Crypto\Cipher.cs" />
     <Compile Include="network\GetPubkey.cs" />
+    <Compile Include="network\Msg.cs" />
     <Compile Include="network\Pong.cs" />
     <Compile Include="ORM github.com_praeclarum_sqlite-net\AsyncTests.cs" />
     <Compile Include="Bitmessage.cs" />
@@ -57,13 +58,12 @@
     <Compile Include="network\Helper4BytesArray.cs" />
     <Compile Include="network\ICanBeSent.cs" />
     <Compile Include="network\Inv.cs" />
-    <Compile Include="network\NetworkAddress.cs" />
     <Compile Include="network\Payload.cs" />
     <Compile Include="network\PrivateKey.cs" />
     <Compile Include="network\Pubkey.cs" />
     <Compile Include="network\Verack.cs" />
     <Compile Include="network\Version.cs" />
-    <Compile Include="network\Node.cs" />
+    <Compile Include="network\NetworkAddress.cs" />
     <Compile Include="ProofOfWork.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ORM github.com_praeclarum_sqlite-net\SQLite.cs" />

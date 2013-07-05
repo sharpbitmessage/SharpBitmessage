@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -52,6 +53,21 @@ namespace bitmessage.network
 			Buffer.BlockCopy(hash, 0, result, 0, 4);
 
 			return result;
+		}
+
+		public static byte[] GetFullMsg(this ICanBeSent message)
+		{
+			using (MemoryStream ms = new MemoryStream())
+			using (BinaryWriter bw = new BinaryWriter(ms))
+			{
+				bw.Write(message.Magic());
+				bw.Write(message.СommandBytes());
+				bw.Write(message.Length());
+				bw.Write(message.Checksum());
+				if (message.SentData != null) bw.Write(message.SentData);
+
+				return ms.ToArray();
+			}
 		}
 	}
 }

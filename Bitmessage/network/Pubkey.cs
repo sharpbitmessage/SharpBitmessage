@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using SQLite;
 using bitmessage.Crypto;
 
@@ -87,7 +88,7 @@ namespace bitmessage.network
 		}
 
 		[Ignore]
-		public UInt64 ExtraBytes
+		public UInt64 PayloadLengthExtraBytes
 		{
 			get
 			{
@@ -98,10 +99,10 @@ namespace bitmessage.network
 			set { _extraBytes = value; }
 		}
 		[MaxLength(20)]
-		public string ExtraBytes4DB
+		public string PayloadLengthExtraBytes4DB
 		{
-			get { return ExtraBytes.ToString(CultureInfo.InvariantCulture); }
-			set { ExtraBytes = UInt64.Parse(value); }
+			get { return PayloadLengthExtraBytes.ToString(CultureInfo.InvariantCulture); }
+			set { PayloadLengthExtraBytes = UInt64.Parse(value); }
 		}
 
 		public Pubkey() { }
@@ -126,7 +127,7 @@ namespace bitmessage.network
 					return;
 				}
 				NonceTrialsPerByte = data.ReadVarInt(ref pos);
-				ExtraBytes = data.ReadVarInt(ref pos);
+				PayloadLengthExtraBytes = data.ReadVarInt(ref pos);
 
 				if (!checkSign)
 				{
@@ -209,10 +210,9 @@ namespace bitmessage.network
 			return task.Result;
 		}
 
-		public virtual void SaveAsync(SQLiteAsyncConnection db)
+		public virtual Task<int> SaveAsync(SQLiteAsyncConnection db)
 		{
-			if (Status == Status.Valid)
-				db.InsertOrReplaceAsync(this);
+			return Status == Status.Valid ? db.InsertOrReplaceAsync(this) : null;
 		}
 
 		#endregion for DB
@@ -242,7 +242,7 @@ namespace bitmessage.network
 			set { Hash = value.HexToBytes(); }
 		}
 
-		public byte[] DecryptAES256CBC(byte[] data)
+		public byte[] DecryptAES256CBC4Broadcast(byte[] data)
 		{
 			//blocksize = OpenSSL.get_cipher(ciphername).get_blocksize()
 			const int blocksize = 16;
@@ -314,8 +314,8 @@ namespace bitmessage.network
 
 			if (Version>=3)
 			{
-				payload.Write(NonceTrialsPerByte);
-				payload.Write(NetworkDefaultPayloadLengthExtraBytes);
+				payload.WriteVarInt(NonceTrialsPerByte);
+				payload.WriteVarInt(NetworkDefaultPayloadLengthExtraBytes);
 			}
 
 			return payload.ToArray();

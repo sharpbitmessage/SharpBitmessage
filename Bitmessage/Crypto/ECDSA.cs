@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -27,13 +28,23 @@ namespace bitmessage.Crypto
 			else if (pubkey != null)
 			{
 				int pos = 0;
-				_decode_pubkey(pubkey, out curve, out pubkey_x, out pubkey_y, ref pos);
+				if (pubkey.Length == 65)
+				{
+					pubkey_x = new byte[32];
+					pubkey_y = new byte[32];
+					Buffer.BlockCopy(pubkey, 1, pubkey_x, 0, 32);
+					Buffer.BlockCopy(pubkey, 33, pubkey_y, 0, 32);
+				}
+				else
+				{
+					_decode_pubkey(pubkey, out curve, out pubkey_x, out pubkey_y, ref pos);
+				}
 				if (privkey != null)
 				{
 					UInt16 curve2;
 					pos = 0;
 					_decode_privkey(privkey, out curve2, out raw_privkey, ref pos);
-					if (curve != curve2)
+					if ((curve != curve2) && (pubkey.Length == 65))
 						throw new Exception("Bad ECC keys ...");
 				}
 				_curve = curve;
@@ -190,10 +201,12 @@ namespace bitmessage.Crypto
 			IntPtr other_pub_key = IntPtr.Zero;
 			IntPtr own_key = IntPtr.Zero;
 			IntPtr own_priv_key = IntPtr.Zero;
-
+			
 			//try:
 			try
 			{
+				Debug.WriteLine("raw_get_ecdh_key pubkey_x=", pubkey_x.ToHex());
+				Debug.WriteLine("raw_get_ecdh_key pubkey_y=", pubkey_y.ToHex());
 				//	ecdh_keybuffer = OpenSSL.malloc(0, 32)
 				var ecdh_keybuffer = new byte[32];
 
@@ -238,9 +251,7 @@ namespace bitmessage.Crypto
 					throw new Exception("[OpenSSL] EC_KEY_set_public_key FAIL ...");
 				if (Native.EC_KEY_check_key(other_key) == 0)
 					throw new Exception("[OpenSSL] EC_KEY_check_key FAIL ...");
-
-
-
+				
 				//	own_key = OpenSSL.EC_KEY_new_by_curve_name(self.curve)
 				//	if own_key == 0:
 				//		raise Exception("[OpenSSL] EC_KEY_new_by_curve_name FAIL ...")
@@ -305,16 +316,18 @@ namespace bitmessage.Crypto
 			result.Write(tmp, 0, tmp.Length);
 
 			tmp = BitConverter.GetBytes(_pubkey_x.Length);
-			tmp.ReverseIfNeed(); // 
-			result.Write(tmp, 0, 2);  // TODO проверить, что tmp != x00x00
+			tmp.ReverseIfNeed(); 
+			result.Write(tmp, 2, 2);
+			if ((tmp[2] != 0) || (tmp[3] != 32)) throw new Exception("_pubkey_x.Length != 32");
 
-			result.Write(_pubkey_x, 0, _pubkey_x.Length);
+			result.Write(_pubkey_x, 0, 32);
 
 			tmp = BitConverter.GetBytes(_pubkey_y.Length);
-			tmp.ReverseIfNeed(); // 
-			result.Write(tmp, 0, 2);  // TODO проверить, что tmp != x00x00
+			tmp.ReverseIfNeed(); 
+			result.Write(tmp, 2, 2);
+			if ((tmp[2] != 0) || (tmp[3] != 32)) throw new Exception("_pubkey_y.Length != 32");
 
-			result.Write(_pubkey_y, 0, _pubkey_y.Length);
+			result.Write(_pubkey_y, 0, 32);
 
 			return result.ToArray();
 		}
@@ -330,8 +343,9 @@ namespace bitmessage.Crypto
 			result.Write(tmp, 0, tmp.Length);
 
 			tmp = BitConverter.GetBytes(_privkey.Length);
-			tmp.ReverseIfNeed(); // 
-			result.Write(tmp, 0, 2); // TODO проверить, что tmp != x00x00
+			tmp.ReverseIfNeed(); 
+			result.Write(tmp, 2, 2);
+			if ((tmp[2] == 0) && (tmp[3] == 0)) throw new Exception("_privkey.Length == 0");
 
 			result.Write(_privkey, 0, _privkey.Length);
 
@@ -558,6 +572,7 @@ namespace bitmessage.Crypto
 			return outBuf;
 		}
 
+
 		internal static byte[] Encrypt(byte[] data, byte[] pubkey)
 		{
 			// pyelliptic.ECC(curve='secp256k1').encrypt(msg,hexToPubkey(hexPubkey))
@@ -581,7 +596,7 @@ namespace bitmessage.Crypto
 			Buffer.BlockCopy(key, 0, key_e, 0, 32);
 			Buffer.BlockCopy(key, 32, key_m, 0, 32);
 
-			pubkey = ephem.get_pubkey();
+			byte[] pubkey4Write = ephem.get_pubkey();
 			byte[] iv = new byte[get_blocksize("aes-256-cbc")];
 			using (var rnd = new RNGCryptoServiceProvider())
 				rnd.GetBytes(iv);
@@ -590,12 +605,15 @@ namespace bitmessage.Crypto
 			var ciphertext = ctx.Ciphering(data);
 			var mac = new HMACSHA256(key_m).ComputeHash(ciphertext);
 
-			byte[] result = new byte[iv.Length + pubkey.Length + ciphertext.Length + mac.Length];
+			byte[] result = new byte[iv.Length + pubkey4Write.Length + ciphertext.Length + mac.Length];
 
-			Buffer.BlockCopy(iv,         0, result, 0,                                             iv.Length        );
-			Buffer.BlockCopy(pubkey,     0, result, iv.Length,                                     pubkey.Length)    ;
-			Buffer.BlockCopy(ciphertext, 0, result, iv.Length + pubkey.Length,                     ciphertext.Length);
-			Buffer.BlockCopy(mac,        0, result, iv.Length + pubkey.Length + ciphertext.Length, mac.Length       );
+			Buffer.BlockCopy(iv,           0, result, 0,                                                   iv.Length);
+			Buffer.BlockCopy(pubkey4Write, 0, result, iv.Length,                                           pubkey4Write.Length);
+			Buffer.BlockCopy(ciphertext,   0, result, iv.Length + pubkey4Write.Length,                     ciphertext.Length);
+			Buffer.BlockCopy(mac,          0, result, iv.Length + pubkey4Write.Length + ciphertext.Length, mac.Length);
+
+			Debug.WriteLine("iv=" + iv.ToHex());
+			Debug.WriteLine("pubkey4Write=" + pubkey4Write.ToHex());
 
 			return result;
 		}

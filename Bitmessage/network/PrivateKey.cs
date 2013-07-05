@@ -53,11 +53,6 @@ namespace bitmessage.network
 						break;
 				}
 			}		
-			Debug.WriteLine("Generated address with ripe digest:" + ripemd160.ToHex() );
-			Debug.WriteLine("Address generator calculated" + numberOfAddressesWeHadToMakeBeforeWeFoundOneWithTheCorrectRipePrefix +
-			                " addresses at " +
-			                numberOfAddressesWeHadToMakeBeforeWeFoundOneWithTheCorrectRipePrefix/(DateTime.Now - startTime).TotalSeconds +
-			                " addresses per second before finding one with the correct ripe-prefix.");
 
 			// NonceTrialsPerByte используется значение по умолчанию
 			// payloadLengthExtraBytes используется значение по умолчанию
@@ -160,7 +155,7 @@ namespace bitmessage.network
 					payload.Write(EncryptionKey, 1, 64);
 
 					payload.WriteVarInt(NonceTrialsPerByte);
-					payload.WriteVarInt(ExtraBytes);
+					payload.WriteVarInt(PayloadLengthExtraBytes);
 
 					byte[] signature = Sign(payload.ToArray());
 
@@ -177,9 +172,9 @@ namespace bitmessage.network
 
 		public PrivateKey(){}
 
-		public new void SaveAsync(SQLiteAsyncConnection db)
+		public new Task<int> SaveAsync(SQLiteAsyncConnection db)
 		{
-			db.InsertOrReplaceAsync(this);
+			return db.InsertOrReplaceAsync(this);
 		}
 
 		public new static IEnumerable<PrivateKey> GetAll(SQLiteAsyncConnection conn)
@@ -205,13 +200,57 @@ namespace bitmessage.network
 		
 		#endregion for DB
 
-		internal void SendAsync(NodeConnection nodeConnection)
+		internal void SendAsync(Bitmessage bitmessage)
 		{
 			LastPubkeySendTime = DateTime.UtcNow;
-			SaveAsync(nodeConnection.Bitmessage.DB);
-			new Task(() => 
-				new Payload(Command, SentData).SaveAsync(nodeConnection.Bitmessage)
+			SaveAsync(bitmessage.DB);
+			new Task(() =>
+				new Payload(Command, SentData).SaveAsync(bitmessage)
 				).Start();
+		}
+
+		public byte[] DecryptAES256CBC4Msg(byte[] data)
+		{
+			//blocksize = OpenSSL.get_cipher(ciphername).get_blocksize()
+			const int blocksize = 16;
+
+			//iv = data[:blocksize]
+			//i = blocksize
+			int pos = 0;
+			var iv = data.ReadBytes(ref pos, blocksize);
+
+			//curve, pubkey_x, pubkey_y, i2 = ECC._decode_pubkey(data[i:])
+			//i += i2
+			UInt16 curve;
+			byte[] pubkeyX;
+			byte[] pubkeyY;
+			ECC._decode_pubkey(data, out curve, out pubkeyX, out pubkeyY, ref pos);
+
+			//ciphertext = data[i:len(data)-32]
+			//i += len(ciphertext)
+			var ciphertext = data.ReadBytes(ref pos, data.Length - pos - 32);
+
+			//mac = data[i:]
+			var mac = data.ReadBytes(ref pos, 32);
+
+			//key = sha512(self.raw_get_ecdh_key(pubkey_x, pubkey_y)).digest()
+			byte[] key;
+			using (var sha512 = new SHA512Managed())
+				key = sha512.ComputeHash(new ECC(null, null, null, null, Wif2PrivateKey(PrivEncryptionKeyWif), ECC.Secp256K1).raw_get_ecdh_key(pubkeyX, pubkeyY));
+
+			//key_e, key_m = key[:32], key[32:]
+			byte[] key_e = new byte[32];
+			byte[] key_m = new byte[32];
+			Buffer.BlockCopy(key, 0, key_e, 0, 32);
+			Buffer.BlockCopy(key, 32, key_m, 0, 32);
+
+			//if hmac_sha256(key_m, ciphertext) != mac:
+			//	raise RuntimeError("Fail to verify data")
+			if (!new HMACSHA256(key_m).ComputeHash(ciphertext).SequenceEqual(mac))
+				throw new Exception("Fail to verify data");
+
+			var ctx = new Cipher(key_e, iv, false);
+			return ctx.Ciphering(ciphertext);
 		}
 	}	
 }

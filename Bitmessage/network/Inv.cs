@@ -53,7 +53,7 @@ namespace bitmessage.network
 					payloadBuff.WriteVarInt((ulong)_inventory.Count);
 					foreach (byte[] inventoryVector in _inventory)
 						payloadBuff.Write(inventoryVector, 0, 32);
-					_sendData = payloadBuff.GetBuffer();
+					_sendData = payloadBuff.ToArray();
 				}
 				return _sendData;
 			}

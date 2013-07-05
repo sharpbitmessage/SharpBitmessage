@@ -89,7 +89,7 @@ namespace bitmessage.network
 					localBw.Write(BitConverter.GetBytes(AddrFromIp).ReverseIfNeed());
 					localBw.Write(BitConverter.GetBytes(AddrFromPort).ReverseIfNeed());
 
-					localBw.Write(Nonce);
+					localBw.Write(BitConverter.GetBytes(Nonce).ReverseIfNeed());
 
 					localBw.WriteVarStr(UserAgent);
 					localBw.WriteVarIntList(StreamNumbers);
