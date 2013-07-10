@@ -45,7 +45,7 @@ namespace bitmessage.network
 						if (subscriptionKey.Stream != _stream) continue;
 						try
 						{
-							decryptedData = subscriptionKey.DecryptAES256CBC4Broadcast(encrypted);
+							decryptedData = subscriptionKey.DecryptAes256Cbc4Broadcast(encrypted);
 							encryptionKey = subscriptionKey;
 						}
 							// ReSharper disable EmptyGeneralCatchClause

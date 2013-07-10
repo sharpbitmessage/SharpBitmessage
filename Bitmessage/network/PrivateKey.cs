@@ -187,16 +187,6 @@ namespace bitmessage.network
 			var task = conn.Table<PrivateKey>().FirstOrDefaultAsync();
 			return task.Result;
 		}
-
-		internal static PrivateKey Find(SQLiteAsyncConnection conn, GetPubkey getpubkey)
-		{
-			var task = conn.Table<PrivateKey>()
-				.Where(k => k.Hash4DB == getpubkey.Hash4DB)
-				.Where(k => k.Version4DB == getpubkey.Version4DB)
-				.Where(k => k.Stream4DB == getpubkey.Stream4DB)
-				.FirstOrDefaultAsync();
-			return task.Result;
-		}
 		
 		#endregion for DB
 

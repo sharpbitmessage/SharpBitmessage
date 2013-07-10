@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 
@@ -24,15 +23,14 @@ namespace bitmessage.network
 			UInt32 tmpLength = BitConverter.ToUInt32(bytes.ReverseIfNeed(), 0);
 			if (tmpLength < int.MaxValue)
 				return (int) tmpLength;
-			else
-				throw new Exception("Header Length > int.MaxValue");
+			throw new Exception("Header Length > int.MaxValue");
 		}
 
 		public static byte[] Magic = new byte[] { 0xE9, 0xBE, 0xB4, 0xD9 };
 
 		private static void ReadHeaderMagic(BinaryReader br)
 		{
-			Debug.Write("ReadHeaderMagic ");
+			//Debug.Write("ReadHeaderMagic ");
 			do
 			{
 				do
@@ -45,18 +43,18 @@ namespace bitmessage.network
 					} while (br.ReadByte() != Magic[1]);
 				} while (br.ReadByte() != Magic[2]);
 			} while (br.ReadByte() != Magic[3]);
-			Debug.WriteLine(" - ok");
+			//Debug.WriteLine(" - ok");
 		}
 
 		public static string ReadHeaderCommand(byte[] bytes)
 		{
-			StringBuilder result = new StringBuilder(12);
+			var result = new StringBuilder(12);
 			foreach (byte b in bytes)
 			{
 				if (b == 0) break;
 				result.Append(Encoding.ASCII.GetChars(new[] { b }));
 			}
-			Debug.WriteLine("ReadHeaderCommand - " + result);
+//			Debug.WriteLine("ReadHeaderCommand - " + result);
 			return result.ToString();
 		}
 	}

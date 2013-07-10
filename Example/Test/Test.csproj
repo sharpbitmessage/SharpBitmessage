@@ -43,10 +43,15 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\bitmessage\Bitmessage.csproj">
+    <ProjectReference Include="..\..\bitmessage\Bitmessage.csproj">
       <Project>{e7d7b85f-89d7-44d7-bf99-89c597b7e852}</Project>
       <Name>Bitmessage</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Reference%28do not .NET%29\libeay32.dll" />
+    <Content Include="Reference%28do not .NET%29\sqlite3.dll" />
+    <Content Include="Reference%28do not .NET%29\ssleay32.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 
 namespace bitmessage.network
@@ -70,10 +69,10 @@ namespace bitmessage.network
 			{
 				if (_sendData == null)
 				{
-					Debug.WriteLine("Подготавляиваю data для отправки Version");
+                    //Debug.WriteLine("Подготавляиваю data для отправки Version");
 
-					MemoryStream payload = new MemoryStream(500);
-					BinaryWriter localBw = new BinaryWriter(payload); // TODO избавится от  localBw
+					var payload = new MemoryStream(500);
+					var localBw = new BinaryWriter(payload); // TODO избавится от  localBw
 
 					localBw.Write(BitConverter.GetBytes(Value).ReverseIfNeed());
 					localBw.Write(BitConverter.GetBytes(Services).ReverseIfNeed());
@@ -96,7 +95,7 @@ namespace bitmessage.network
 
 					_sendData = payload.ToArray();
 
-					Debug.WriteLine("version = " + _sendData.ToHex());
+					//Debug.WriteLine("version = " + _sendData.ToHex());
 				}
 				return _sendData;
 			}

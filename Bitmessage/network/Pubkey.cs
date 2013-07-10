@@ -137,13 +137,13 @@ namespace bitmessage.network
 
 				if (timeStartPos >= 0)
 				{
-					byte[] forCheck = new byte[pos - timeStartPos];
+					var forCheck = new byte[pos - timeStartPos];
 					Buffer.BlockCopy(data, timeStartPos, forCheck, 0, forCheck.Length);
 
-					int signLen = (int)data.ReadVarInt(ref pos);
+					var signLen = (int)data.ReadVarInt(ref pos);
 					var sign = data.ReadBytes(ref pos, signLen);
 
-					if (ECDSA.ECDSAVerify(forCheck, SigningKey, sign))
+					if (forCheck.ECDSAVerify(SigningKey, sign))
 						Status = Status.Valid;
 				}
 			}
@@ -178,7 +178,7 @@ namespace bitmessage.network
 							repeOffset = 1;
 					}
 
-					byte[] buff = new byte[v.Length + s.Length + ripe.Length - repeOffset];
+					var buff = new byte[v.Length + s.Length + ripe.Length - repeOffset];
 					Buffer.BlockCopy(v,    0,          buff, 0,                   v.Length);
 					Buffer.BlockCopy(s,    0,          buff, v.Length,            s.Length);
 					Buffer.BlockCopy(ripe, repeOffset, buff, v.Length + s.Length, ripe.Length - repeOffset);
@@ -242,7 +242,7 @@ namespace bitmessage.network
 			set { Hash = value.HexToBytes(); }
 		}
 
-		public byte[] DecryptAES256CBC4Broadcast(byte[] data)
+		public byte[] DecryptAes256Cbc4Broadcast(byte[] data)
 		{
 			//blocksize = OpenSSL.get_cipher(ciphername).get_blocksize()
 			const int blocksize = 16;
@@ -272,9 +272,11 @@ namespace bitmessage.network
 				key = sha512.ComputeHash(new ECC(null, null, null, null, Sha512VersionStreamHashFirst32(),ECC.Secp256K1).raw_get_ecdh_key(pubkeyX, pubkeyY));
 
 			//key_e, key_m = key[:32], key[32:]
-			byte[] key_e = new byte[32];
-			byte[] key_m = new byte[32];
-			Buffer.BlockCopy(key,  0, key_e, 0, 32);
+// ReSharper disable InconsistentNaming
+			var key_e = new byte[32];
+			var key_m = new byte[32];
+// ReSharper restore InconsistentNaming
+            Buffer.BlockCopy(key, 0, key_e, 0, 32);
 			Buffer.BlockCopy(key, 32, key_m, 0, 32);
 
 			//if hmac_sha256(key_m, ciphertext) != mac:
@@ -288,7 +290,7 @@ namespace bitmessage.network
 
 		public byte[] Sha512VersionStreamHashFirst32()
 		{
-			byte[] result = new byte[32];
+			var result = new byte[32];
 			using (var sha512 = new SHA512Managed())
 				Buffer.BlockCopy(
 					sha512.ComputeHash(Version.VarIntToBytes().Concatenate(Stream.VarIntToBytes()).Concatenate(Hash)), 0,
@@ -303,7 +305,7 @@ namespace bitmessage.network
 
 		internal byte[] GetPayload4Broadcast()
 		{
-			MemoryStream payload = new MemoryStream(500);
+			var payload = new MemoryStream(500);
 
             payload.WriteVarInt(Version);
             payload.WriteVarInt(Stream);

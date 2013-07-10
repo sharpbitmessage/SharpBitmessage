@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using SQLite;
 using bitmessage.network;
 
@@ -45,15 +46,15 @@ namespace bitmessage
 				DB.CreateTableAsync<Broadcast>().Wait();
 				DB.CreateTableAsync<Msg>().Wait();
 
-				DB.InsertOrReplaceAsync(new NetworkAddress("127.0.0.1", 8444)).Wait();
+                new NetworkAddress("127.0.0.1", 8444).SaveAsync(DB).Wait();
 
-				//db.InsertAsync(new NetworkAddress("80.69.173.220", 443)).Wait();
-				//db.InsertAsync(new NetworkAddress("109.95.105.15", 8443)).Wait();
-				//db.InsertAsync(new NetworkAddress("66.65.120.151", 8080)).Wait();
-				//db.InsertAsync(new NetworkAddress("76.180.233.38", 8444)).Wait();
-				//db.InsertAsync(new NetworkAddress("84.48.88.42", 443)).Wait();
-				//db.InsertAsync(new NetworkAddress("74.132.73.137", 443)).Wait();
-				//db.InsertAsync(new NetworkAddress("60.242.109.18", 443)).Wait();
+                new NetworkAddress("85.171.174.131", 8444).SaveAsync(DB).Wait();
+                new NetworkAddress("23.28.68.159", 8444).SaveAsync(DB).Wait();
+                new NetworkAddress("66.108.210.240", 8080).SaveAsync(DB).Wait();
+                new NetworkAddress("204.236.246.212", 8444).SaveAsync(DB).Wait();
+                new NetworkAddress("122.60.235.157", 8444).SaveAsync(DB).Wait();
+                new NetworkAddress("204.236.246.212", 8444).SaveAsync(DB).Wait();
+                new NetworkAddress("24.98.219.109", 8444).SaveAsync(DB).Wait();
 			}
 
 			MemoryInventory = new MemoryInventory(DB);
@@ -61,7 +62,8 @@ namespace bitmessage
 			_listener = new TcpListener(IPAddress.Any, _port);
 			try
 			{
-				_listener.Start();
+			    Debug.WriteLine("Пытаюсь стартовать прослушивание на порту " + _port);
+                _listener.Start();
 			}
 			catch (Exception e)
 			{
@@ -84,9 +86,9 @@ namespace bitmessage
 			throw new NotImplementedException();
 		}
 
-		internal void AddNode(NetworkAddress networkAddress)
+        internal Task<int> AddNode(NetworkAddress networkAddress)
 		{
-			throw new NotImplementedException();
+            return DB.InsertOrReplaceAsync(networkAddress);
 		}
 
 	    #region Dispose
@@ -123,13 +125,13 @@ namespace bitmessage
 		{
 			while (_listener != null)
 			{
-				NodeConnection incoming = new NodeConnection(this, _listener.AcceptTcpClient());
-				Debug.WriteLine("Подключение к серверу c " + incoming.NetworkAddress.HostStreamPort);
+				var incoming = new NodeConnection(this, _listener.AcceptTcpClient());
+                Debug.WriteLine("Подключение к серверу c " + incoming.NetworkAddress.StreamHostPort);
 
 				lock (_nodeConnections)
 				{
 					foreach (var client in _nodeConnections)
-						if (client.NetworkAddress.HostStreamPort == incoming.NetworkAddress.HostStreamPort)
+                        if (client.NetworkAddress.StreamHostPort == incoming.NetworkAddress.StreamHostPort)
 							client.Stop();
 
 					_nodeConnections.Add(incoming);
@@ -152,25 +154,25 @@ namespace bitmessage
 					// Довожу количество подключенных клиентов до 8
 					if (_nodeConnections.Count < 8)
 					{
-						var nodes = DB.Table<NetworkAddress>().OrderBy(x => x.NumberOfBadConnection).ToListAsync().Result;
+						var nodes = DB.Table<NetworkAddress>().OrderByDescending(x => x.TimeLastSeen).ToListAsync().Result;
 						foreach (NetworkAddress node in nodes)
 						{
-							bool find = _nodeConnections.Any(c => c.NetworkAddress.HostStreamPort == node.HostStreamPort);
+                            bool find = _nodeConnections.Any(c => c.NetworkAddress.StreamHostPort == node.StreamHostPort);
 							if (!find)
 							{
-								NodeConnection c = new NodeConnection(this, node);
+								var c = new NodeConnection(this, node);
 								try
 								{
-									Debug.WriteLine("Пытаюсь подключиться к " + node.HostStreamPort);
+									//Debug.WriteLine("Пытаюсь подключиться к " + node.HostStreamPort);
 									c.Connect();
 								}
 								catch (Exception e)
 								{
-									Debug.WriteLine(node.HostStreamPort + " " + e);
+                                    Debug.WriteLine(node + " " + e);
 								}
 								if (c.Connected)
 								{
-									Debug.WriteLine("Подключился к " + node.HostStreamPort);
+									//Debug.WriteLine("Подключился к " + node.HostStreamPort);
 									_nodeConnections.Add(c);
 								}
 								if (_nodeConnections.Count >= 8) break;
@@ -248,18 +250,29 @@ namespace bitmessage
 
 		#region see https://bitmessage.org/wiki/API_Reference
 
+        private List<PrivateKey> _privateKeysCache;
+        private object _lock4privateKeysCache = new object();
+
 		public PrivateKey GeneratePrivateKey(string label = null, bool eighteenByteRipe = false, bool send = false, bool save = true)
 		{
-			PrivateKey privateKey = new PrivateKey(label, eighteenByteRipe);
+			var privateKey = new PrivateKey(label, eighteenByteRipe);
 			if (save) privateKey.SaveAsync(DB).Wait();
 			if (send) privateKey.SendAsync(this);
+
+            lock (_lock4privateKeysCache)
+		        _privateKeysCache = null;
 
 			return privateKey;
 		}
 
-		public IEnumerable<PrivateKey> ListMyAddresses()
+        public IEnumerable<PrivateKey> ListMyAddresses()
 		{
-			return PrivateKey.GetAll(DB);
+            lock (_lock4privateKeysCache)
+            {
+                if (_privateKeysCache == null)
+                    _privateKeysCache = new List<PrivateKey>(PrivateKey.GetAll(DB));
+                return _privateKeysCache.ToList();
+            }
 		}
 
 		public IEnumerable<Pubkey> ListOtherAddresses()
@@ -269,12 +282,30 @@ namespace bitmessage
 
 		public PrivateKey CreateRandomAddress(string label, bool eighteenByteRipe = false)
 		{
-			PrivateKey privateKey = new PrivateKey(label, eighteenByteRipe);
+			var privateKey = new PrivateKey(label, eighteenByteRipe);
 			privateKey.SaveAsync(DB);
+
+            lock (_lock4privateKeysCache)
+                _privateKeysCache = null;
+
 			return privateKey;
 		}
 
-	    public IEnumerable<Broadcast> GetAllInboxMessages()
+        internal PrivateKey FindPrivateKey(GetPubkey getpubkey)
+        {
+            lock (_lock4privateKeysCache)
+            {
+                if (_privateKeysCache == null)
+                    _privateKeysCache = new List<PrivateKey>(PrivateKey.GetAll(DB));
+                return _privateKeysCache.FirstOrDefault(key => ((key.Hash4DB == getpubkey.Hash4DB) &&
+                                                                (key.Version4DB == getpubkey.Version4DB) &&
+                                                                (key.Stream4DB == getpubkey.Stream4DB)
+                                                               ));
+            }
+        }
+
+
+        public IEnumerable<Broadcast> GetAllInboxMessages()
 	    {
 			throw new NotImplementedException();
 	    }
@@ -286,7 +317,7 @@ namespace bitmessage
 
 		public void SendMessage(string fromAddress, string toAddress, string subject, string body, int encodingType = 2)
 		{
-			Msg msg = new Msg(this)
+			var msg = new Msg(this)
 				          {
 							  KeyFrom = fromAddress,
 							  KeyTo = toAddress,
@@ -299,7 +330,7 @@ namespace bitmessage
 
 		public void SendBroadcast(string fromAddress, string subject, string body, int encodingType = 2)
 		{
-			Broadcast broadcast = new Broadcast(this)
+			var broadcast = new Broadcast(this)
 			{
 				Key = fromAddress,
 				Body = body,
@@ -309,23 +340,36 @@ namespace bitmessage
 			broadcast.Send();
 		}
 
+        private List<Pubkey> _pubkeysCache;
+        private object _lock4pubkeysCache = new object();
+
 		public IEnumerable<Pubkey> Subscriptions(string stream)
 		{
-			var query =
-				DB.Table<Pubkey>()
-					.Where(v => v.SubscriptionIndex > 0)
-					.Where(v => v.Stream4DB == stream)
-					.OrderByDescending(v => v.SubscriptionIndex);
-			return query.ToListAsync().Result;
+		    lock (_lock4pubkeysCache)
+		    {
+		        if (_pubkeysCache == null)
+		        {
+		            var query =
+		                DB.Table<Pubkey>()
+		                  .Where(v => v.SubscriptionIndex > 0)
+		                  .Where(v => v.Stream4DB == stream)
+		                  .OrderByDescending(v => v.SubscriptionIndex);
+		            _pubkeysCache = new List<Pubkey>(query.ToListAsync().Result);
+		        }
+		        return _pubkeysCache.ToList();
+		    }
 		}
 
 	    public void AddSubscription(Pubkey pubkey)
 		{
-			if (pubkey.SubscriptionIndex == 0)
-			{
-				pubkey.SubscriptionIndex = 1;
-				pubkey.SaveAsync(DB);
-			}
+	        if (pubkey.SubscriptionIndex == 0)
+	        {
+	            pubkey.SubscriptionIndex = 1;
+	            pubkey.SaveAsync(DB);
+
+	            lock (_lock4pubkeysCache)
+	                _pubkeysCache = null;
+	        }
 		}
 
 		public void DeleteSubscription(Pubkey pubkey)
@@ -334,7 +378,10 @@ namespace bitmessage
 			{
 				pubkey.SubscriptionIndex = 0;
 				pubkey.SaveAsync(DB);
-			}
+            
+                lock (_lock4pubkeysCache)
+                    _pubkeysCache = null;
+            }
 		}
 
 		#endregion see https://bitmessage.org/wiki/API_Reference

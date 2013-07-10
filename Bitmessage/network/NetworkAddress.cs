@@ -1,31 +1,52 @@
 using System;
 using System.Globalization;
 using System.Net;
+using System.Threading.Tasks;
 using SQLite;
 
 namespace bitmessage.network
 {
 	public class NetworkAddress
-	{		public NetworkAddress() { }
+	{
+	    private DateTime _timeLastSeen = Helper.Epoch;
+	    private string _streamHostPort;
+	    public NetworkAddress() { }
 
 		public NetworkAddress(string host, UInt16 port)
 		{
-			TimeLastSeen = DateTime.MinValue;
 			Stream = 1;
-			Services = 0; // ???
+			Services = 0;
 			Host = host;
-			Port = port;
-			NumberOfBadConnection = 0;
+			Port = port;			
 		}
 
-		[PrimaryKey]
-		public string HostStreamPort
-		{
-			get { return Host + " " + Stream + " " + Port; }
-		}
+	    [PrimaryKey]
+	    public string StreamHostPort
+	    {
+	        get
+	        {
+	            if (string.IsNullOrEmpty(_streamHostPort))
+	            {
+	                _streamHostPort = Stream + " " + Host + ":" + Port;
+	            }
+	            return _streamHostPort;
+	        }
+	        set { _streamHostPort = value; }
+	    }
 
-		public DateTime TimeLastSeen { get; set; }
-		public UInt32 Stream { get; set; }
+	    public DateTime TimeLastSeen
+	    {
+	        get { return _timeLastSeen; }
+	        set
+	        {
+	            if (value > DateTime.UtcNow)
+	                _timeLastSeen = Helper.Epoch;
+	            else
+	                _timeLastSeen = value;
+	        }
+	    }
+
+	    public UInt32 Stream { get; set; }
 
 		[Ignore]
 		public UInt64 Services { get; set; }
@@ -40,11 +61,11 @@ namespace bitmessage.network
 
 		public string Host { get; set; }
 		public UInt16 Port { get; set; }
-		public int NumberOfBadConnection { get; set; }
+		//public int NumberOfBadConnection { get; set; }
 
 		public override string ToString()
 		{
-			return HostStreamPort;
+            return StreamHostPort;
 		}
 
 		internal static NetworkAddress GetFromAddrList(byte[] addrList, ref int pos)
@@ -67,5 +88,11 @@ namespace bitmessage.network
 
 			return result;
 		}
+
+        public Task<int> SaveAsync(SQLiteAsyncConnection db)
+        {
+            return db.InsertOrReplaceAsync(this);
+        }
+
 	}
 }

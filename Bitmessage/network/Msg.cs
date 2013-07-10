@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -68,7 +67,7 @@ namespace bitmessage.network
 				pos = 0;
 
 				Version = decryptedData.ReadVarInt(ref pos);
-				Pubkey senderKey = new Pubkey(decryptedData, ref pos);
+				var senderKey = new Pubkey(decryptedData, ref pos);
 
 				if (!decryptedData.ReadBytes(ref pos, 20).SequenceEqual(myEncryptionKey.Hash))
 					//print 'The original sender of this message did not send it to you. Someone is attempting a Surreptitious Forwarding Attack.'
@@ -90,7 +89,7 @@ namespace bitmessage.network
 				UInt64 signatureLength = decryptedData.ReadVarInt(ref pos);
 				byte[] signature = decryptedData.ReadBytes(ref pos, (int) signatureLength);
 
-				byte[] data = new byte[posOfEndMsg];
+				var data = new byte[posOfEndMsg];
 				Buffer.BlockCopy(decryptedData, 0, data, 0, posOfEndMsg);
 
 				if (data.ECDSAVerify(senderKey.SigningKey, signature))
@@ -142,15 +141,15 @@ namespace bitmessage.network
 		{
 				if (_askData==null)
 				{
-					MemoryStream payload = new MemoryStream();
+					var payload = new MemoryStream();
 
-					Random rnd = new Random();
+					var rnd = new Random();
 					ulong dt = DateTime.UtcNow.ToUnix() + (ulong)rnd.Next(600) - 300;
 
 					payload.Write(dt);
 					payload.WriteVarInt(Stream);
 
-					byte[] rndMsg = new byte[12 + rnd.Next(500)];
+					var rndMsg = new byte[12 + rnd.Next(500)];
 					rnd.NextBytes(rndMsg);
 
 					payload.Write(rndMsg, 0, rndMsg.Length);
@@ -203,14 +202,14 @@ namespace bitmessage.network
 					Pubkey pubkeyTo = Pubkey.Find(_bm.DB, KeyTo); // TODO Получать ключ, если его ещё нет
 					if (pubkeyTo == null) throw new Exception("Pubkey not found");
 
-					MemoryStream payload = new MemoryStream(1000 + Subject.Length + Body.Length); // TODO realy 1000?
-					Random rnd = new Random();
+					var payload = new MemoryStream(1000 + Subject.Length + Body.Length); // TODO realy 1000?
+					var rnd = new Random();
 					ulong dt = DateTime.UtcNow.ToUnix() + (ulong) rnd.Next(600) - 300;
 
 					payload.Write(dt);
 					payload.WriteVarInt(Stream);
 
-					MemoryStream dataToEncrypt = new MemoryStream(1000 + Subject.Length + Body.Length); // TODO realy 1000?
+					var dataToEncrypt = new MemoryStream(1000 + Subject.Length + Body.Length); // TODO realy 1000?
 					dataToEncrypt.WriteVarInt(Version);
 
 					byte[] publicAddress = myPrivkeyFrom.GetPayload4Broadcast();
@@ -218,7 +217,7 @@ namespace bitmessage.network
 
 					dataToEncrypt.Write(pubkeyTo.Hash, 0, 20);
 
-					Byte encodingType = (byte) EncodingType;
+					var encodingType = (byte) EncodingType;
 					dataToEncrypt.Write(encodingType);
 					dataToEncrypt.WriteVarStr("Subject:" + Subject + "\nBody:" + Body);
 
@@ -228,9 +227,9 @@ namespace bitmessage.network
 
 					byte[] signature = myPrivkeyFrom.Sign(dataToEncrypt.ToArray());
 
-					Debug.WriteLine("data=" + dataToEncrypt.ToArray().ToHex());
-					Debug.WriteLine("SigningKey=" + myPrivkeyFrom.SigningKey.ToHex());
-					Debug.WriteLine("signature=" + signature.ToHex());
+                    //Debug.WriteLine("data=" + dataToEncrypt.ToArray().ToHex());
+                    //Debug.WriteLine("SigningKey=" + myPrivkeyFrom.SigningKey.ToHex());
+                    //Debug.WriteLine("signature=" + signature.ToHex());
 						
 					dataToEncrypt.WriteVarInt((UInt64)signature.Length);
 					dataToEncrypt.Write(signature, 0, signature.Length);

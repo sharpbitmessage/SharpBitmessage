@@ -48,15 +48,14 @@ namespace bitmessage
 		{
 			Bitmessage = bitmessage;
 			_tcpClient = tcpClient;
-			IPEndPoint ipep = (IPEndPoint) tcpClient.Client.RemoteEndPoint;
+			var ipep = (IPEndPoint) tcpClient.Client.RemoteEndPoint;
 			NetworkAddress = new NetworkAddress
 				       {
 					       TimeLastSeen = DateTime.UtcNow,
 					       Stream = 1,
 					       Services = 0, // ???
 					       Host = (ipep.Address.ToString()),
-					       Port = (UInt16)ipep.Port,
-					       NumberOfBadConnection = 0
+					       Port = (UInt16)ipep.Port,					       
 				       };
 
 		}
@@ -77,8 +76,8 @@ namespace bitmessage
 
 		internal void Listen()
 		{
-			debug("Стартую ListenerLoop");
-			_listenerLoopThread = new Thread(ListenerLoop) {IsBackground = true, Name = "ListenerLoop " + NetworkAddress.HostStreamPort};
+			//debug("Стартую ListenerLoop");
+            _listenerLoopThread = new Thread(ListenerLoop) { IsBackground = true, Name = "ListenerLoop " + NetworkAddress.StreamHostPort };
 			_listenerLoopThread.Start();
 		}
 
@@ -112,7 +111,10 @@ namespace bitmessage
 					}
 					catch (Exception e)
 					{
-						Debug.WriteLine("Похоже, что соединение потерено, извещаю об этом поток _bitmessage " + e);
+					    string excptionStr = e.ToString();
+                        if ((e is IOException) || (e is SocketException))
+					        excptionStr = "";
+					    Debug.WriteLine("соединение " + NetworkAddress + " потерено " + excptionStr);
 						Bitmessage.NodeIsDisconnected.Set();
 						break;
 					}
@@ -139,7 +141,7 @@ namespace bitmessage
 
 						if (header.Command == "version")
 						{
-							Version v = new Version(payload);
+							var v = new Version(payload);
 							debug("Подключились с " + v.UserAgent);
 							if ((v.Value != 1) && (v.Value != 2))
 								Stop("Version = " + v.Value);
@@ -158,22 +160,25 @@ namespace bitmessage
 
 						else if (header.Command == "inv")
 						{
-							Inv inputInventory = new Inv(payload.SentData);
-							MemoryInventory buff4GetData = new MemoryInventory(inputInventory.Count);
+							var inputInventory = new Inv(payload.SentData);
+							var buff4GetData = new MemoryInventory(inputInventory.Count);
 
 							debug("прислали inv. Inventory.Count=" + inputInventory.Count);
 
-							foreach (byte[] inventoryVector in inputInventory)
-							{
-								_nodeConnectionInventory.Insert(inventoryVector);
-								if (!Bitmessage.MemoryInventory.Exists(inventoryVector))
-								{
-									Bitmessage.MemoryInventory.AddWait(inventoryVector);
-									buff4GetData.Insert(inventoryVector);
-								}
-							}
+                            //lock (Bitmessage.MemoryInventory)
+                            //{
+						        foreach (byte[] inventoryVector in inputInventory)
+						        {
+						            _nodeConnectionInventory.Insert(inventoryVector);
+						            if (!Bitmessage.MemoryInventory.Exists(inventoryVector))
+						            {
+						                Bitmessage.MemoryInventory.AddWait(inventoryVector);
+						                buff4GetData.Insert(inventoryVector);
+						            }
+						        }
+                            //}
 
-							if (buff4GetData.Count > 0)
+						    if (buff4GetData.Count > 0)
 							{
 								debug("SendGetdata count=" + buff4GetData.Count);
 								Send(new GetData(buff4GetData));
@@ -189,125 +194,134 @@ namespace bitmessage
 						else if (header.Command == "verack")
 						{
 							Send(new Inv(Bitmessage.MemoryInventory));
+
+                            NetworkAddress.TimeLastSeen = DateTime.UtcNow;
+						    NetworkAddress.SaveAsync(Bitmessage.DB);
+
 						}
 
 						#endregion
 
 						#region getpubkey
 
-						else if (header.Command == "getpubkey")
-						{
-							GetPubkey getpubkey = new GetPubkey(payload);
+                        else if (header.Command == "getpubkey")
+                        {
+                            var getpubkey = new GetPubkey(payload);
 
-							PrivateKey pk = PrivateKey.Find(Bitmessage.DB, getpubkey);
-							if ((pk != null) && (pk.LastPubkeySendTime.ToUnix() < (DateTime.UtcNow.ToUnix() - Payload.LengthOfTimeToHoldOnToAllPubkeys)))
-								pk.SendAsync(Bitmessage);
-							{
-							}
-						}
+                            PrivateKey pk = Bitmessage.FindPrivateKey(getpubkey);
+                            if ((pk != null) &&
+                                (pk.LastPubkeySendTime.ToUnix() <
+                                 (DateTime.UtcNow.ToUnix() - Payload.LengthOfTimeToHoldOnToAllPubkeys)))
+                            {
+                                pk.SendAsync(Bitmessage);
+                            }
+                        }
 
-						#endregion getpubkey
+                            #endregion getpubkey
 
-						#region pubkey
+                            #region pubkey
 
-						else if (header.Command == "pubkey")
-						{
-							int pos = payload.FirstByteAfterTime;
-							Pubkey pubkey = new Pubkey(payload.SentData, ref pos, true);
+                        else if (header.Command == "pubkey")
+                        {
+                            int pos = payload.FirstByteAfterTime;
+                            var pubkey = new Pubkey(payload.SentData, ref pos, true);
 
-							if (pubkey.Status == Status.Valid)
-							{
-								pubkey.SaveAsync(Bitmessage.DB);
-								Bitmessage.OnReceivePubkey(pubkey);
-							}
-							else
-								Bitmessage.OnReceiveInvalidPubkey(pubkey);
-						}
+                            if (pubkey.Status == Status.Valid)
+                            {
+                                pubkey.SaveAsync(Bitmessage.DB);
+                                Bitmessage.OnReceivePubkey(pubkey);
+                            }
+                            else
+                                Bitmessage.OnReceiveInvalidPubkey(pubkey);
+                        }
 
-						#endregion PUBKEY
+                            #endregion PUBKEY
 
-						#region msg
+                            #region msg
 
-						else if (header.Command == "msg")
-						{
-							Msg msg = new Msg(Bitmessage, payload);
-							msg.SaveAsync(Bitmessage.DB);
+                        else if (header.Command == "msg")
+                        {
+                            var msg = new Msg(Bitmessage, payload);
+                            msg.SaveAsync(Bitmessage.DB);
 
-							if (msg.Status == Status.Valid)
-								Bitmessage.OnReceiveMsg(msg);
-							else
-								Bitmessage.OnReceiveInvalidMsg(msg);
-						}
+                            if (msg.Status == Status.Valid)
+                                Bitmessage.OnReceiveMsg(msg);
+                            else
+                                Bitmessage.OnReceiveInvalidMsg(msg);
+                        }
 
-						#endregion MSG
+                            #endregion MSG
 
-						#region broadcast
+                            #region broadcast
 
-						else if (header.Command == "broadcast")
-						{
-							Broadcast broadcast = new Broadcast(Bitmessage, payload);
-							broadcast.SaveAsync(Bitmessage.DB);
+                        else if (header.Command == "broadcast")
+                        {
+                            var broadcast = new Broadcast(Bitmessage, payload);
+                            broadcast.SaveAsync(Bitmessage.DB);
 
-							if (broadcast.Status == Status.Valid)
-								Bitmessage.OnReceiveBroadcast(broadcast);
-							else
-								Bitmessage.OnReceiveInvalidBroadcast(broadcast);
-						}
+                            if (broadcast.Status == Status.Valid)
+                                Bitmessage.OnReceiveBroadcast(broadcast);
+                            else
+                                Bitmessage.OnReceiveInvalidBroadcast(broadcast);
+                        }
 
-						#endregion BROADCAST
+                            #endregion BROADCAST
 
-						#region addr
+                            #region addr
 
-						else if (header.Command == "addr")
-						{
-							int pos = 0;
-							UInt64 numberOfAddressesIncluded = payload.SentData.ReadVarInt(ref pos);
-							if ((numberOfAddressesIncluded > 0) && (numberOfAddressesIncluded < 1001))
-							{
-								if (payload.Length != (pos + (38 * (int)numberOfAddressesIncluded)))
-									throw new Exception("addr message does not contain the correct amount of data. Ignoring.");
-								
-								while(pos<payload.Length)
-								{
-									NetworkAddress networkAddress = NetworkAddress.GetFromAddrList(payload.SentData, ref pos);
-								}
-							}
-						}
+                        else if (header.Command == "addr")
+                        {
+                            int pos = 0;
+                            UInt64 numberOfAddressesIncluded = payload.SentData.ReadVarInt(ref pos);
+                            if ((numberOfAddressesIncluded > 0) && (numberOfAddressesIncluded < 1001))
+                            {
+                                if (payload.Length != (pos + (38*(int) numberOfAddressesIncluded)))
+                                    throw new Exception(
+                                        "addr message does not contain the correct amount of data. Ignoring.");
 
-						#endregion addr
+                                while (pos < payload.Length)
+                                {
+                                    NetworkAddress networkAddress = NetworkAddress.GetFromAddrList(payload.SentData,
+                                                                                                   ref pos);
+                                    Bitmessage.AddNode(networkAddress);
+                                }
+                            }
+                        }
 
-						#region getdata
+                            #endregion addr
 
-						else if (header.Command == "getdata")
-						{
-							debug("Load getdata");
-							var getData = new GetData(payload.SentData);
+                            #region getdata
 
-							foreach (byte[] hash in getData.Inventory)
-								Payload.SendAsync(this, hash.ToHex(false));
-						}
+                        else if (header.Command == "getdata")
+                        {
+                            debug("Load getdata");
+                            var getData = new GetData(payload.SentData);
 
-						#endregion getdata
+                            foreach (byte[] hash in getData.Inventory)
+                                Payload.SendAsync(this, hash.ToHex(false));
+                        }
 
-						#region ping
+                            #endregion getdata
 
-						else if (header.Command == "ping")
-						{
-							Send(new Pong());
-						}
+                            #region ping
 
-						#endregion ping
+                        else if (header.Command == "ping")
+                        {
+                            Send(new Pong());
+                        }
 
-						#region pong
+                            #endregion ping
 
-						else if (header.Command == "pong")
-						{
+                            #region pong
 
-						}
+                        else if (header.Command == "pong")
+                        {
 
-						#endregion pong
+                        }
 
-						else debug("unknown command");
+                            #endregion pong
+
+                        else debug("unknown command");
 					}
 					else
 						debug("checksum error");

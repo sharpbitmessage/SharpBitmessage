@@ -2,10 +2,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
 using SQLite;
-using System.Linq;
 
 namespace bitmessage.network
 {
@@ -164,7 +161,7 @@ namespace bitmessage.network
 		{
 			get
 			{
-				Debug.WriteLine("embeddedTime = " + EmbeddedTime.FromUnix());
+                //Debug.WriteLine("embeddedTime = " + EmbeddedTime.FromUnix());
 
 				if (EmbeddedTime > DateTime.UtcNow.ToUnix() + 10800)
 					return false;
@@ -226,7 +223,7 @@ namespace bitmessage.network
 				byte[] resultHash;
 				using (var sha512 = new SHA512Managed())
 				{
-					byte[] buff = new byte[8 + 512 / 8];
+					var buff = new byte[8 + 512 / 8];
 					Buffer.BlockCopy(SentData, 0, buff, 0, 8);
 
 					pos = 8;
@@ -239,10 +236,9 @@ namespace bitmessage.network
 				UInt64 pow = resultHash.ReadUInt64(ref pos);
 				UInt64 target = ProofOfWork.Target(SentData.Length);
 
-				Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + SentData.Length);
+				//Debug.WriteLine("ProofOfWork=" + (pow < target) + " pow=" + pow + " target=" + target + " lendth=" + SentData.Length);
 
-				if (pow < target) return true;
-				return false;
+                return (pow < target);
 			}
 		}
 
@@ -253,7 +249,7 @@ namespace bitmessage.network
 		public int CompareTo(object obj)
 		{
 			if (obj == null) return 1;
-			Payload otherPayload = obj as Payload;
+			var otherPayload = obj as Payload;
 			if (otherPayload == null)
 				throw new ArgumentException("Object is not a Payload");
 			byte[] otherHash = otherPayload.InventoryVector;

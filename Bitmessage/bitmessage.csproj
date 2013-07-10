@@ -69,6 +69,14 @@
     <Compile Include="ORM github.com_praeclarum_sqlite-net\SQLite.cs" />
     <Compile Include="ORM github.com_praeclarum_sqlite-net\SQLiteAsync.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <WCFMetadata Include="Service References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Reference%28do not .NET%29\libeay32.dll" />
+    <Content Include="Reference%28do not .NET%29\sqlite3.dll" />
+    <Content Include="Reference%28do not .NET%29\ssleay32.dll" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

@@ -1,7 +1,8 @@
-﻿using System;
+﻿// ReSharper disable InconsistentNaming
+// ReSharper disable InconsistentNaming
+using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using OpenSSL.Core;
@@ -11,7 +12,7 @@ namespace bitmessage.Crypto
 {
 	public class ECC
 	{
-		public const UInt16 Secp256K1 = 714;
+        public const UInt16 Secp256K1 = 714;
 		public const UInt16 Sect283r1 = 730;
 
 		private readonly UInt16 _curve;
@@ -185,12 +186,9 @@ namespace bitmessage.Crypto
 				_privkey = null;
 				throw new Exception("Bad ECC keys ...");
 			}
-			else
-			{
-				_pubkey_x = pubkey_x;
-				_pubkey_y = pubkey_y;
-				_privkey = privkey;
-			}
+		    _pubkey_x = pubkey_x;
+		    _pubkey_y = pubkey_y;
+		    _privkey = privkey;
 		}
 
 		public byte[] raw_get_ecdh_key(byte[] pubkey_x, byte[] pubkey_y)
@@ -205,8 +203,6 @@ namespace bitmessage.Crypto
 			//try:
 			try
 			{
-				Debug.WriteLine("raw_get_ecdh_key pubkey_x=", pubkey_x.ToHex());
-				Debug.WriteLine("raw_get_ecdh_key pubkey_y=", pubkey_y.ToHex());
 				//	ecdh_keybuffer = OpenSSL.malloc(0, 32)
 				var ecdh_keybuffer = new byte[32];
 
@@ -375,7 +371,7 @@ namespace bitmessage.Crypto
 			try
 			{
 				//	size = len(inputb)
-				int size = data.Length;
+				//int size = data.Length;
 				//	buff = OpenSSL.malloc(inputb, size)
 				byte[] buff = data;
 				//	digest = OpenSSL.malloc(0, 64)
@@ -612,8 +608,8 @@ namespace bitmessage.Crypto
 			Buffer.BlockCopy(ciphertext,   0, result, iv.Length + pubkey4Write.Length,                     ciphertext.Length);
 			Buffer.BlockCopy(mac,          0, result, iv.Length + pubkey4Write.Length + ciphertext.Length, mac.Length);
 
-			Debug.WriteLine("iv=" + iv.ToHex());
-			Debug.WriteLine("pubkey4Write=" + pubkey4Write.ToHex());
+            //Debug.WriteLine("iv=" + iv.ToHex());
+            //Debug.WriteLine("pubkey4Write=" + pubkey4Write.ToHex());
 
 			return result;
 		}
@@ -626,3 +622,5 @@ namespace bitmessage.Crypto
 		}
 	}
 }
+// ReSharper restore InconsistentNaming
+// ReSharper restore InconsistentNaming
